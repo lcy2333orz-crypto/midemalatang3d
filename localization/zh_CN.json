@@ -1,9 +1,4 @@
 {
-  "app.title": "小猫麻辣烫",
-  "ui.bootstrap.status": "项目初始化成功",
-  "ui.language.current": "当前语言：{language}",
-  "ui.language.switch": "切换语言",
-  "language.zh_CN": "简体中文",
-  "language.en_US": "英语"
+  "app.title": "麻辣烫",
+  "debug.phase": "2D 移动基础"
 }
-

@@ -1,18 +1,1 @@
-# Godot-generated data
-/.godot/
-/.import/
-
-# Build and export output
-/builds/
-/exports/
-*.tmp
-*.log
-
-# OS and editor files
-.DS_Store
-Thumbs.db
-desktop.ini
-*.swp
-*.swo
-*~
-
+.godot/

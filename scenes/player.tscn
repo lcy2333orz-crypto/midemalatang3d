@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/player_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://scripts/local_player_input.gd" id="2_input"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_player"]
+radius = 12.0
+height = 34.0
+
+[node name="Player" type="CharacterBody2D"]
+script = ExtResource("1_controller")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -17)
+shape = SubResource("CapsuleShape2D_player")
+
+[node name="VisualRoot" type="Node2D" parent="."]
+
+[node name="PlaceholderBody" type="Polygon2D" parent="VisualRoot"]
+polygon = PackedVector2Array(-14, -48, 14, -48, 19, -28, 15, -8, 9, 0, -9, 0, -15, -8, -19, -28)
+color = Color(0.88, 0.32, 0.25, 1)
+
+[node name="FacingMarker" type="Polygon2D" parent="VisualRoot"]
+position = Vector2(0, 5)
+polygon = PackedVector2Array(-5, -5, 5, -5, 0, 5)
+color = Color(1, 0.91, 0.35, 1)
+
+[node name="LocalPlayerInput" type="Node" parent="."]
+process_physics_priority = -100
+script = ExtResource("2_input")
