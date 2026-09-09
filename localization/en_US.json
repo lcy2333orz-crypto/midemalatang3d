@@ -1,0 +1,9 @@
+{
+  "app.title": "Kitty Malatang",
+  "ui.bootstrap.status": "Project initialized successfully",
+  "ui.language.current": "Current language: {language}",
+  "ui.language.switch": "Switch Language",
+  "language.zh_CN": "Simplified Chinese",
+  "language.en_US": "English"
+}
+
