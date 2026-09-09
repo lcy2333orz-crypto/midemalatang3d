@@ -22,17 +22,25 @@ func _run() -> void:
 		"parameter replacement"
 	)
 
-	var packed_main: PackedScene = load("res://scenes/core/main.tscn") as PackedScene
-	var main: Control = packed_main.instantiate() as Control
-	root.add_child(main)
+	var packed_ui: PackedScene = load("res://scenes/ui/localization_test_ui.tscn") as PackedScene
+	var localization_ui: Control = packed_ui.instantiate() as Control
+	root.add_child(localization_ui)
 	await process_frame
 
-	_expect_equal(main.get_node("%TitleLabel").get("text"), "小猫麻辣烫", "initial UI title")
-	main.get_node("%SwitchLanguageButton").emit_signal("pressed")
-	await process_frame
-	_expect_equal(main.get_node("%TitleLabel").get("text"), "Kitty Malatang", "switched UI title")
 	_expect_equal(
-		main.get_node("%CurrentLanguageLabel").get("text"),
+		localization_ui.get_node("%TitleLabel").get("text"),
+		"小猫麻辣烫",
+		"initial UI title"
+	)
+	localization_ui.get_node("%SwitchLanguageButton").emit_signal("pressed")
+	await process_frame
+	_expect_equal(
+		localization_ui.get_node("%TitleLabel").get("text"),
+		"Kitty Malatang",
+		"switched UI title"
+	)
+	_expect_equal(
+		localization_ui.get_node("%CurrentLanguageLabel").get("text"),
 		"Current language: English",
 		"switched current language"
 	)
@@ -53,7 +61,7 @@ func _run() -> void:
 	_expect_equal(manager.call("set_language", "invalid_locale"), false, "invalid language rejected")
 	_expect_equal(manager.call("get_current_language"), "zh_CN", "language preserved after rejection")
 
-	main.queue_free()
+	localization_ui.queue_free()
 	if _failures == 0:
 		print("LOCALIZATION_SMOKE_TEST: PASS")
 	else:

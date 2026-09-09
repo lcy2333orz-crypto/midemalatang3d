@@ -1,0 +1,55 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://scripts/player/local_player_input.gd" id="2_input"]
+[ext_resource type="Script" path="res://scripts/player/player_identity.gd" id="3_identity"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_player"]
+radius = 0.35
+height = 1.4
+
+[sub_resource type="StandardMaterial3D" id="PlayerMaterial"]
+albedo_color = Color(0.92, 0.28, 0.2, 1)
+roughness = 0.8
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
+material = SubResource("PlayerMaterial")
+radius = 0.35
+height = 1.4
+radial_segments = 16
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="FacingMaterial"]
+albedo_color = Color(1, 0.88, 0.25, 1)
+roughness = 0.7
+
+[sub_resource type="BoxMesh" id="FacingMesh"]
+material = SubResource("FacingMaterial")
+size = Vector3(0.18, 0.18, 0.45)
+
+[node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 3
+script = ExtResource("1_controller")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.7, 0)
+shape = SubResource("CapsuleShape_player")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 0.7, 0)
+
+[node name="PlaceholderMesh" type="MeshInstance3D" parent="VisualRoot"]
+mesh = SubResource("CapsuleMesh_player")
+
+[node name="FacingMarker" type="MeshInstance3D" parent="VisualRoot"]
+position = Vector3(0, 0, -0.48)
+mesh = SubResource("FacingMesh")
+
+[node name="LocalPlayerInput" type="Node" parent="."]
+process_physics_priority = -100
+script = ExtResource("2_input")
+
+[node name="PlayerIdentity" type="Node" parent="."]
+script = ExtResource("3_identity")
