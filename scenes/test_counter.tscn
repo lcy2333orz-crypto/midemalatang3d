@@ -1,0 +1,45 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/placement_surface.gd" id="1_surface"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_interaction"]
+size = Vector2(216, 112)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_static"]
+size = Vector2(176, 40)
+
+[node name="TestCounter" type="Area2D"]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("1_surface")
+
+[node name="CounterTop" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-88, -72, 88, -72, 88, -32, -88, -32)
+color = Color(0.42, 0.59, 0.56, 1)
+
+[node name="CounterFront" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-88, -32, 88, -32, 88, 0, -88, 0)
+color = Color(0.25, 0.42, 0.4, 1)
+
+[node name="Highlight" type="Polygon2D" parent="."]
+visible = false
+z_index = -1
+polygon = PackedVector2Array(-93, -77, 93, -77, 93, 5, -93, 5)
+color = Color(0.95, 0.9, 0.3, 0.62)
+
+[node name="ItemAnchor" type="Marker2D" parent="."]
+position = Vector2(0, -40)
+z_index = 1
+
+[node name="InteractionShape" type="CollisionShape2D" parent="."]
+position = Vector2(0, -36)
+shape = SubResource("RectangleShape2D_interaction")
+
+[node name="StaticBody2D" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
+position = Vector2(0, -20)
+shape = SubResource("RectangleShape2D_static")

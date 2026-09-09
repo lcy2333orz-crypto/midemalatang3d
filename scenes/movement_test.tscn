@@ -1,15 +1,14 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://scenes/test_carryable.tscn" id="2_carryable"]
+[ext_resource type="PackedScene" path="res://scenes/test_counter.tscn" id="3_counter"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1280, 32)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_vertical"]
 size = Vector2(32, 656)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_counter"]
-size = Vector2(360, 18)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_vertical_obstacle"]
 size = Vector2(64, 240)
@@ -76,12 +75,6 @@ position = Vector2(86, 230)
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WorldCollision/PassageRight"]
 shape = SubResource("RectangleShape2D_passage_obstacle")
 
-[node name="CounterPlaceholder" type="StaticBody2D" parent="WorldCollision"]
-position = Vector2(0, -89)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WorldCollision/CounterPlaceholder"]
-shape = SubResource("RectangleShape2D_counter")
-
 [node name="BoundaryVisuals" type="Node2D" parent="."]
 
 [node name="TopWallVisual" type="Polygon2D" parent="BoundaryVisuals"]
@@ -103,16 +96,17 @@ color = Color(0.25, 0.28, 0.3, 1)
 [node name="YSortWorld" type="Node2D" parent="."]
 y_sort_enabled = true
 
-[node name="CounterPlaceholder" type="Node2D" parent="YSortWorld"]
-position = Vector2(0, -80)
+[node name="TestCounterA" parent="YSortWorld" instance=ExtResource("3_counter")]
+position = Vector2(-180, -80)
 
-[node name="CounterTop" type="Polygon2D" parent="YSortWorld/CounterPlaceholder"]
-polygon = PackedVector2Array(-180, -72, 180, -72, 180, -34, -180, -34)
-color = Color(0.42, 0.59, 0.56, 1)
+[node name="TestCounterB" parent="YSortWorld" instance=ExtResource("3_counter")]
+position = Vector2(100, -80)
 
-[node name="CounterFront" type="Polygon2D" parent="YSortWorld/CounterPlaceholder"]
-polygon = PackedVector2Array(-180, -34, 180, -34, 180, 0, -180, 0)
-color = Color(0.25, 0.42, 0.4, 1)
+[node name="TestCarryableA" parent="YSortWorld" instance=ExtResource("2_carryable")]
+position = Vector2(-180, 72)
+
+[node name="TestCarryableB" parent="YSortWorld" instance=ExtResource("2_carryable")]
+position = Vector2(105, 92)
 
 [node name="VerticalObstacle" type="Node2D" parent="YSortWorld"]
 position = Vector2(260, 150)
@@ -143,7 +137,7 @@ polygon = PackedVector2Array(-50, -124, 50, -124, 50, 0, -50, 0)
 color = Color(0.49, 0.45, 0.38, 1)
 
 [node name="Player" parent="YSortWorld" instance=ExtResource("1_player")]
-position = Vector2(0, 80)
+position = Vector2(0, 104)
 
 [node name="Camera2D" type="Camera2D" parent="."]
 rotation = 0.0
