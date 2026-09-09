@@ -10,6 +10,7 @@ const WORLD_COLLISION_MASK := 1 << 0
 
 @onready var _player: CharacterBody2D = get_parent() as CharacterBody2D
 @onready var _hold_anchor: Marker2D = get_parent().get_node("HoldAnchor") as Marker2D
+@onready var _visual_root: Node2D = get_parent().get_node("VisualRoot") as Node2D
 
 var _held_item: Carryable = null
 
@@ -95,19 +96,30 @@ func _is_drop_position_legal(world_position: Vector2) -> bool:
 
 
 func _update_hold_anchor() -> void:
+	_hold_anchor.z_index = 0
 	match _player.facing:
 		Vector2.UP:
 			_hold_anchor.position = Vector2(0.0, -38.0)
-			_hold_anchor.z_index = -1
+			_move_hold_anchor_before_visual()
 		Vector2.DOWN:
 			_hold_anchor.position = Vector2(0.0, 8.0)
-			_hold_anchor.z_index = 1
+			_move_hold_anchor_after_visual()
 		Vector2.LEFT:
 			_hold_anchor.position = Vector2(-24.0, -12.0)
-			_hold_anchor.z_index = 1
+			_move_hold_anchor_after_visual()
 		Vector2.RIGHT:
 			_hold_anchor.position = Vector2(24.0, -12.0)
-			_hold_anchor.z_index = 1
+			_move_hold_anchor_after_visual()
+
+
+func _move_hold_anchor_before_visual() -> void:
+	if _hold_anchor.get_index() > _visual_root.get_index():
+		_player.move_child(_hold_anchor, _visual_root.get_index())
+
+
+func _move_hold_anchor_after_visual() -> void:
+	if _hold_anchor.get_index() < _visual_root.get_index():
+		_player.move_child(_hold_anchor, _visual_root.get_index())
 
 
 func _validate_held_item() -> void:

@@ -34,7 +34,7 @@ color = Color(1, 0.91, 0.35, 1)
 
 [node name="HoldAnchor" type="Marker2D" parent="."]
 position = Vector2(0, 8)
-z_index = 1
+z_index = 0
 
 [node name="InteractionArea" type="Area2D" parent="."]
 collision_layer = 0

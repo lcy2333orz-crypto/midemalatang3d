@@ -28,6 +28,7 @@ func _run() -> void:
 	_check_player_root()
 	_check_player_interaction_nodes()
 	_check_camera()
+	_check_world_draw_order_structure()
 	_check_input_actions()
 	_check_interaction_contracts()
 	_check_carry_state_transitions()
@@ -78,6 +79,12 @@ func _check_player_interaction_nodes() -> void:
 		_failures.append("Player must contain PlayerCarry")
 	if not player.get_node_or_null("PlayerInteractor") is PlayerInteractor:
 		_failures.append("Player must contain PlayerInteractor")
+	var hold_anchor := player.get_node("HoldAnchor") as Marker2D
+	var visual_root := player.get_node("VisualRoot") as Node2D
+	if hold_anchor.z_index != 0:
+		_failures.append("HoldAnchor must remain at world z_index 0")
+	if hold_anchor.get_index() <= visual_root.get_index():
+		_failures.append("Initial DOWN HoldAnchor must draw after VisualRoot")
 	player.free()
 
 
@@ -91,6 +98,29 @@ func _check_camera() -> void:
 		_failures.append("MovementTest/Camera2D must be Camera2D")
 	elif not is_zero_approx(camera.rotation):
 		_failures.append("Camera2D rotation must be 0")
+	movement_test.free()
+
+
+func _check_world_draw_order_structure() -> void:
+	var packed_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	if packed_scene == null:
+		return
+	var movement_test := packed_scene.instantiate()
+	var y_sort_world := movement_test.get_node("YSortWorld") as Node2D
+	if not y_sort_world.y_sort_enabled:
+		_failures.append("YSortWorld must keep y_sort_enabled")
+	for node_name in [
+		&"Player",
+		&"TestCounterA",
+		&"TestCounterB",
+		&"TestCarryableA",
+		&"TestCarryableB",
+	]:
+		var world_object := y_sort_world.get_node(NodePath(node_name)) as CanvasItem
+		if world_object == null or world_object.get_parent() != y_sort_world:
+			_failures.append("%s must be a direct YSortWorld child" % node_name)
+		elif world_object.z_index != 0:
+			_failures.append("%s must remain at world z_index 0" % node_name)
 	movement_test.free()
 
 
@@ -108,13 +138,19 @@ func _check_interaction_contracts() -> void:
 	if carryable_scene == null or counter_scene == null:
 		return
 
-	var carryable := carryable_scene.instantiate()
-	var surface := counter_scene.instantiate()
+	var carryable := carryable_scene.instantiate() as Carryable
+	var surface := counter_scene.instantiate() as PlacementSurface
 	for method_name in [&"can_interact", &"interact"]:
 		if not carryable.has_method(method_name):
 			_failures.append("Carryable missing interaction method: %s" % method_name)
 		if not surface.has_method(method_name):
 			_failures.append("PlacementSurface missing interaction method: %s" % method_name)
+	var item_anchor := surface.get_node("ItemAnchor") as Marker2D
+	var counter_front := surface.get_node("CounterFront") as Polygon2D
+	if surface.z_index != 0 or carryable.z_index != 0 or item_anchor.z_index != 0:
+		_failures.append("Counter, Carryable, and ItemAnchor must remain at z_index 0")
+	if item_anchor.get_index() <= counter_front.get_index():
+		_failures.append("ItemAnchor must draw after Counter visuals by sibling order")
 	carryable.free()
 	surface.free()
 
@@ -142,6 +178,17 @@ func _check_carry_state_transitions() -> void:
 
 	var player_carry := player.get_node("PlayerCarry") as PlayerCarry
 	var second_player_carry := second_player.get_node("PlayerCarry") as PlayerCarry
+	var hold_anchor := player.get_node("HoldAnchor") as Marker2D
+	var visual_root := player.get_node("VisualRoot") as Node2D
+	player.set("facing", Vector2.UP)
+	player_carry.call("_physics_process", 0.0)
+	if hold_anchor.z_index != 0 or hold_anchor.get_index() >= visual_root.get_index():
+		_failures.append("UP held item must draw behind VisualRoot at local z_index 0")
+	player.set("facing", Vector2.DOWN)
+	player_carry.call("_physics_process", 0.0)
+	if hold_anchor.z_index != 0 or hold_anchor.get_index() <= visual_root.get_index():
+		_failures.append("DOWN held item must draw in front of VisualRoot at local z_index 0")
+
 	if not player_carry.pickup(item_a):
 		_failures.append("Pickup must succeed for an empty PlayerCarry")
 	if player_carry.get_held_item() != item_a:
@@ -156,6 +203,8 @@ func _check_carry_state_transitions() -> void:
 		_failures.append("Place must succeed on an empty surface")
 	if player_carry.has_item() or surface.occupied_item != item_a:
 		_failures.append("Place must transfer item A to the surface")
+	if item_a.get_parent() != surface.get_node("ItemAnchor") or item_a.z_index != 0:
+		_failures.append("Placed item must remain in the Counter local z_index 0 unit")
 
 	if not player_carry.pickup(item_b):
 		_failures.append("Pickup of item B must succeed after placing item A")
