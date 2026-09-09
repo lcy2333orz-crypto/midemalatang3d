@@ -1,8 +1,9 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/test_carryable.tscn" id="2_carryable"]
 [ext_resource type="PackedScene" path="res://scenes/test_counter.tscn" id="3_counter"]
+[ext_resource type="PackedScene" path="res://scenes/order_bowl.tscn" id="4_order_bowl"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1280, 32)
@@ -107,6 +108,9 @@ position = Vector2(-180, 72)
 
 [node name="TestCarryableB" parent="YSortWorld" instance=ExtResource("2_carryable")]
 position = Vector2(105, 92)
+
+[node name="OrderBowl" parent="YSortWorld" instance=ExtResource("4_order_bowl")]
+position = Vector2(0, 36)
 
 [node name="VerticalObstacle" type="Node2D" parent="YSortWorld"]
 position = Vector2(260, 150)
