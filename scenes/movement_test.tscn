@@ -76,39 +76,29 @@ position = Vector2(86, 230)
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WorldCollision/PassageRight"]
 shape = SubResource("RectangleShape2D_passage_obstacle")
 
-[node name="GreyboxFurniture" type="Node2D" parent="."]
+[node name="CounterPlaceholder" type="StaticBody2D" parent="WorldCollision"]
+position = Vector2(0, -89)
 
-[node name="TopWallVisual" type="Polygon2D" parent="GreyboxFurniture"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WorldCollision/CounterPlaceholder"]
+shape = SubResource("RectangleShape2D_counter")
+
+[node name="BoundaryVisuals" type="Node2D" parent="."]
+
+[node name="TopWallVisual" type="Polygon2D" parent="BoundaryVisuals"]
 polygon = PackedVector2Array(-640, -360, 640, -360, 640, -328, -640, -328)
 color = Color(0.25, 0.28, 0.3, 1)
 
-[node name="BottomWallVisual" type="Polygon2D" parent="GreyboxFurniture"]
+[node name="BottomWallVisual" type="Polygon2D" parent="BoundaryVisuals"]
 polygon = PackedVector2Array(-640, 328, 640, 328, 640, 360, -640, 360)
 color = Color(0.25, 0.28, 0.3, 1)
 
-[node name="LeftWallVisual" type="Polygon2D" parent="GreyboxFurniture"]
+[node name="LeftWallVisual" type="Polygon2D" parent="BoundaryVisuals"]
 polygon = PackedVector2Array(-640, -328, -608, -328, -608, 328, -640, 328)
 color = Color(0.25, 0.28, 0.3, 1)
 
-[node name="RightWallVisual" type="Polygon2D" parent="GreyboxFurniture"]
+[node name="RightWallVisual" type="Polygon2D" parent="BoundaryVisuals"]
 polygon = PackedVector2Array(608, -328, 640, -328, 640, 328, 608, 328)
 color = Color(0.25, 0.28, 0.3, 1)
-
-[node name="VerticalObstacleVisual" type="Polygon2D" parent="GreyboxFurniture"]
-polygon = PackedVector2Array(228, -90, 292, -90, 292, 150, 228, 150)
-color = Color(0.36, 0.43, 0.46, 1)
-
-[node name="SquareObstacleVisual" type="Polygon2D" parent="GreyboxFurniture"]
-polygon = PackedVector2Array(-370, 100, -270, 100, -270, 200, -370, 200)
-color = Color(0.42, 0.38, 0.32, 1)
-
-[node name="PassageLeftVisual" type="Polygon2D" parent="GreyboxFurniture"]
-polygon = PackedVector2Array(-136, 180, -36, 180, -36, 280, -136, 280)
-color = Color(0.49, 0.45, 0.38, 1)
-
-[node name="PassageRightVisual" type="Polygon2D" parent="GreyboxFurniture"]
-polygon = PackedVector2Array(36, 180, 136, 180, 136, 280, 36, 280)
-color = Color(0.49, 0.45, 0.38, 1)
 
 [node name="YSortWorld" type="Node2D" parent="."]
 y_sort_enabled = true
@@ -124,11 +114,33 @@ color = Color(0.42, 0.59, 0.56, 1)
 polygon = PackedVector2Array(-180, -34, 180, -34, 180, 0, -180, 0)
 color = Color(0.25, 0.42, 0.4, 1)
 
-[node name="StaticBody2D" type="StaticBody2D" parent="YSortWorld/CounterPlaceholder"]
+[node name="VerticalObstacle" type="Node2D" parent="YSortWorld"]
+position = Vector2(260, 150)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="YSortWorld/CounterPlaceholder/StaticBody2D"]
-position = Vector2(0, -9)
-shape = SubResource("RectangleShape2D_counter")
+[node name="Visual" type="Polygon2D" parent="YSortWorld/VerticalObstacle"]
+polygon = PackedVector2Array(-32, -264, 32, -264, 32, 0, -32, 0)
+color = Color(0.36, 0.43, 0.46, 1)
+
+[node name="SquareObstacle" type="Node2D" parent="YSortWorld"]
+position = Vector2(-320, 200)
+
+[node name="Visual" type="Polygon2D" parent="YSortWorld/SquareObstacle"]
+polygon = PackedVector2Array(-50, -124, 50, -124, 50, 0, -50, 0)
+color = Color(0.42, 0.38, 0.32, 1)
+
+[node name="PassageLeft" type="Node2D" parent="YSortWorld"]
+position = Vector2(-86, 280)
+
+[node name="Visual" type="Polygon2D" parent="YSortWorld/PassageLeft"]
+polygon = PackedVector2Array(-50, -124, 50, -124, 50, 0, -50, 0)
+color = Color(0.49, 0.45, 0.38, 1)
+
+[node name="PassageRight" type="Node2D" parent="YSortWorld"]
+position = Vector2(86, 280)
+
+[node name="Visual" type="Polygon2D" parent="YSortWorld/PassageRight"]
+polygon = PackedVector2Array(-50, -124, 50, -124, 50, 0, -50, 0)
+color = Color(0.49, 0.45, 0.38, 1)
 
 [node name="Player" parent="YSortWorld" instance=ExtResource("1_player")]
 position = Vector2(0, 80)
