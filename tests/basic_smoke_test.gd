@@ -145,10 +145,25 @@ func _check_interaction_contracts() -> void:
 			_failures.append("Carryable missing interaction method: %s" % method_name)
 		if not surface.has_method(method_name):
 			_failures.append("PlacementSurface missing interaction method: %s" % method_name)
+	var carryable_highlight := carryable.get_node("Highlight") as Polygon2D
+	var carryable_visual := carryable.get_node("Visual") as Polygon2D
+	if carryable_highlight.z_index != 0:
+		_failures.append("Carryable Highlight must remain at z_index 0")
+	if carryable_highlight.get_index() >= carryable_visual.get_index():
+		_failures.append("Carryable Highlight must draw before Visual by sibling order")
 	var item_anchor := surface.get_node("ItemAnchor") as Marker2D
+	var counter_highlight := surface.get_node("Highlight") as Polygon2D
+	var counter_top := surface.get_node("CounterTop") as Polygon2D
 	var counter_front := surface.get_node("CounterFront") as Polygon2D
 	if surface.z_index != 0 or carryable.z_index != 0 or item_anchor.z_index != 0:
 		_failures.append("Counter, Carryable, and ItemAnchor must remain at z_index 0")
+	if counter_highlight.z_index != 0:
+		_failures.append("Counter Highlight must remain at z_index 0")
+	if (
+		counter_highlight.get_index() >= counter_top.get_index()
+		or counter_highlight.get_index() >= counter_front.get_index()
+	):
+		_failures.append("Counter Highlight must draw before Counter visuals by sibling order")
 	if item_anchor.get_index() <= counter_front.get_index():
 		_failures.append("ItemAnchor must draw after Counter visuals by sibling order")
 	carryable.free()
