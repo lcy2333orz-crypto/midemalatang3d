@@ -1,0 +1,34 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/pot.gd" id="1_pot"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_pot"]
+size = Vector2(40, 24)
+
+[node name="Pot" type="Area2D"]
+z_index = 0
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("1_pot")
+
+[node name="Highlight" type="Polygon2D" parent="."]
+visible = false
+z_index = 0
+polygon = PackedVector2Array(-24, -30, 24, -30, 20, 4, -20, 4)
+color = Color(1, 0.9, 0.25, 0.7)
+
+[node name="PotVisual" type="Polygon2D" parent="."]
+z_index = 0
+polygon = PackedVector2Array(-20, -24, 20, -24, 16, 0, -16, 0)
+color = Color(0.32, 0.36, 0.4, 1)
+
+[node name="FoodVisual" type="Polygon2D" parent="."]
+visible = false
+z_index = 0
+polygon = PackedVector2Array(-15, -20, 15, -20, 12, -10, -12, -10)
+color = Color(0.72, 0.3, 0.18, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -12)
+shape = SubResource("RectangleShape2D_pot")

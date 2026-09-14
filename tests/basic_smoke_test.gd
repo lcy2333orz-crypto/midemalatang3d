@@ -8,6 +8,7 @@ const SCENE_PATHS := [
 	"res://scenes/test_counter.tscn",
 	"res://scenes/order_bowl.tscn",
 	"res://scenes/staple_station.tscn",
+	"res://scenes/pot.tscn",
 ]
 const MOVEMENT_ACTIONS := [
 	&"gameplay_move_up",
@@ -26,6 +27,13 @@ class RejectingOrderBowl:
 		return true
 
 	func add_staple(_staple_id_to_add: StringName) -> bool:
+		return false
+
+
+class RejectingReceivePot:
+	extends Pot
+
+	func receive_food_state(_state: FoodState) -> bool:
 		return false
 
 
@@ -50,6 +58,8 @@ func _run() -> void:
 	_check_order_bowl_staple_rules()
 	_check_order_bowl_carry_integration()
 	_check_staple_station_business_rules()
+	_check_pot_business_rules()
+	_check_pot_interaction_and_carry()
 	_check_localization()
 
 	if _failures.is_empty():
@@ -134,6 +144,7 @@ func _check_world_draw_order_structure() -> void:
 		&"TestCarryableA",
 		&"TestCarryableB",
 		&"OrderBowl",
+		&"PotA",
 		&"WideNoodleStation",
 		&"InstantNoodleStation",
 	]:
@@ -782,6 +793,466 @@ func _check_staple_station_business_rules() -> void:
 		or valid_food.staple_id != &"instant_noodle"
 	):
 		_failures.append("Floor Drop must preserve staple Bowl business state")
+
+	test_world.free()
+
+
+func _check_pot_business_rules() -> void:
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	if pot_scene == null or bowl_scene == null:
+		return
+
+	var pot := pot_scene.instantiate() as Pot
+	if pot == null:
+		_failures.append("Pot scene must instantiate as Pot")
+		return
+	if not pot is Carryable:
+		_failures.append("Pot must inherit Carryable")
+	if pot.order_id != &"" or pot.food_state != null:
+		_failures.append("New Pot must begin unbound and empty")
+	if pot.collision_layer != Carryable.INTERACTABLE_LAYER:
+		_failures.append("Ground Pot must use the existing interactable layer 3")
+	if pot.get_node_or_null("StaticBody2D") != null:
+		_failures.append("Pot must not contain a StaticBody2D")
+
+	var highlight := pot.get_node("Highlight") as Polygon2D
+	var pot_visual := pot.get_node("PotVisual") as Polygon2D
+	var food_visual := pot.get_node("FoodVisual") as Polygon2D
+	var collision_shape := pot.get_node("CollisionShape2D") as CollisionShape2D
+	if (
+		pot.z_index != 0
+		or highlight.z_index != 0
+		or pot_visual.z_index != 0
+		or food_visual.z_index != 0
+	):
+		_failures.append("Pot and all visuals must remain at z_index 0")
+	if (
+		highlight.get_index() >= pot_visual.get_index()
+		or pot_visual.get_index() >= food_visual.get_index()
+		or food_visual.get_index() >= collision_shape.get_index()
+	):
+		_failures.append("Pot must use Highlight, PotVisual, FoodVisual, CollisionShape2D sibling order")
+	if not pot_visual.visible or food_visual.visible:
+		_failures.append("New Pot must show PotVisual and hide FoodVisual")
+	for method_name in [
+		&"can_receive_food_state",
+		&"receive_food_state",
+		&"can_receive_from_bowl",
+		&"receive_from_bowl",
+		&"can_interact",
+		&"interact",
+	]:
+		if not pot.has_method(method_name):
+			_failures.append("Pot missing required method: %s" % method_name)
+	for forbidden_method in [&"take_food_state", &"pour_to_bowl", &"serve_to_bowl", &"transfer_to_bowl"]:
+		if pot.has_method(forbidden_method):
+			_failures.append("Pot must not expose reverse transfer method: %s" % forbidden_method)
+
+	var food := FoodState.new(&"order_pot_001", true, &"wide_noodle")
+	var food_order_id := food.order_id
+	var food_base_present := food.base_food_present
+	var food_staple_id := food.staple_id
+	if not pot.can_receive_food_state(food) or not pot.receive_food_state(food):
+		_failures.append("Empty Pot must receive a valid FoodState")
+	if pot.order_id != &"order_pot_001" or pot.food_state != food:
+		_failures.append("Pot must bind from and preserve the same FoodState instance")
+	if (
+		food.order_id != food_order_id
+		or food.base_food_present != food_base_present
+		or food.staple_id != food_staple_id
+	):
+		_failures.append("Pot receipt must not mutate FoodState contents")
+	if not food_visual.visible:
+		_failures.append("Pot with non-empty FoodState must show FoodVisual")
+
+	var same_order_food := FoodState.new(&"order_pot_001", true, &"instant_noodle")
+	var other_order_food := FoodState.new(&"order_pot_002", true, &"instant_noodle")
+	if (
+		pot.can_receive_food_state(same_order_food)
+		or pot.receive_food_state(same_order_food)
+		or pot.can_receive_food_state(other_order_food)
+		or pot.receive_food_state(other_order_food)
+	):
+		_failures.append("Occupied Pot must reject every second FoodState")
+	if pot.order_id != &"order_pot_001" or pot.food_state != food:
+		_failures.append("Occupied Pot failure must preserve the original order and FoodState")
+	pot.free()
+
+	var valid_empty_food := FoodState.new(&"order_empty_contents", false, &"")
+	var empty_contents_pot := pot_scene.instantiate() as Pot
+	if not empty_contents_pot.receive_food_state(valid_empty_food):
+		_failures.append("Pot must accept a valid FoodState even when its contents are empty")
+	if empty_contents_pot.food_state != valid_empty_food:
+		_failures.append("Pot must preserve valid empty FoodState identity")
+	if (empty_contents_pot.get_node("FoodVisual") as CanvasItem).visible:
+		_failures.append("Pot must hide FoodVisual for an empty FoodState")
+	empty_contents_pot.free()
+
+	var bound_empty_pot := pot_scene.instantiate() as Pot
+	bound_empty_pot.order_id = &"bound_pot_order"
+	var matching_food := FoodState.new(&"bound_pot_order", true, &"wide_noodle")
+	var mismatching_food := FoodState.new(&"other_pot_order", true, &"wide_noodle")
+	if bound_empty_pot.can_receive_food_state(mismatching_food) or bound_empty_pot.receive_food_state(mismatching_food):
+		_failures.append("Bound empty Pot must reject a different order")
+	if bound_empty_pot.order_id != &"bound_pot_order" or bound_empty_pot.food_state != null:
+		_failures.append("Order mismatch must not mutate a bound empty Pot")
+	if not bound_empty_pot.can_receive_food_state(matching_food):
+		_failures.append("Bound empty Pot must accept a matching order")
+	bound_empty_pot.free()
+
+	var invalid_receive_pot := pot_scene.instantiate() as Pot
+	var invalid_food := FoodState.new(&"", true, &"wide_noodle")
+	if (
+		invalid_receive_pot.can_receive_food_state(null)
+		or invalid_receive_pot.receive_food_state(null)
+		or invalid_receive_pot.can_receive_food_state(invalid_food)
+		or invalid_receive_pot.receive_food_state(invalid_food)
+	):
+		_failures.append("Pot must reject null and invalid FoodState")
+	if invalid_receive_pot.order_id != &"" or invalid_receive_pot.food_state != null:
+		_failures.append("Invalid FoodState failure must not bind or fill Pot")
+	invalid_receive_pot.free()
+
+	var transfer_order := OrderData.new(&"order_transfer_001", &"wide_noodle")
+	var transfer_bowl := bowl_scene.instantiate() as OrderBowl
+	var transfer_pot := pot_scene.instantiate() as Pot
+	transfer_bowl.bind_to_order(transfer_order)
+	transfer_bowl.add_staple(&"wide_noodle")
+	var original_food := transfer_bowl.food_state
+	var original_food_order := original_food.order_id
+	var original_base_present := original_food.base_food_present
+	var original_staple := original_food.staple_id
+	if not transfer_pot.can_receive_from_bowl(transfer_bowl):
+		_failures.append("Free ground Pot must accept a valid filled OrderBowl")
+	if not transfer_pot.receive_from_bowl(transfer_bowl):
+		_failures.append("Bowl to Pot transfer must succeed")
+	if transfer_bowl.order_id != transfer_order.order_id or transfer_bowl.food_state != null:
+		_failures.append("Successful transfer must leave an Empty Order Bowl with its order_id")
+	if transfer_pot.order_id != transfer_order.order_id or transfer_pot.food_state != original_food:
+		_failures.append("Successful transfer must move the exact FoodState instance into Pot")
+	if (
+		original_food.order_id != original_food_order
+		or original_food.base_food_present != original_base_present
+		or original_food.staple_id != original_staple
+	):
+		_failures.append("Bowl to Pot transfer must not mutate FoodState data")
+	if (
+		(transfer_bowl.get_node("FoodVisual") as CanvasItem).visible
+		or (transfer_bowl.get_node("StapleVisual") as CanvasItem).visible
+	):
+		_failures.append("Transferred-from Bowl must hide FoodVisual and StapleVisual")
+	if not (transfer_pot.get_node("FoodVisual") as CanvasItem).visible:
+		_failures.append("Transferred-to Pot must show FoodVisual")
+	transfer_bowl.free()
+	transfer_pot.free()
+
+	var wrong_order := OrderData.new(&"order_wrong_pot_transfer", &"wide_noodle")
+	var wrong_bowl := bowl_scene.instantiate() as OrderBowl
+	var wrong_pot := pot_scene.instantiate() as Pot
+	wrong_bowl.bind_to_order(wrong_order)
+	wrong_bowl.add_staple(&"instant_noodle")
+	var wrong_food := wrong_bowl.food_state
+	if not wrong_pot.receive_from_bowl(wrong_bowl):
+		_failures.append("Pot must accept a wrong staple selected by the player")
+	if (
+		wrong_order.required_staple_id != &"wide_noodle"
+		or wrong_pot.food_state != wrong_food
+		or wrong_pot.food_state.staple_id != &"instant_noodle"
+	):
+		_failures.append("Wrong staple transfer must preserve instant_noodle without correction")
+	wrong_bowl.free()
+	wrong_pot.free()
+
+	var unbound_bowl := bowl_scene.instantiate() as OrderBowl
+	var unbound_target_pot := pot_scene.instantiate() as Pot
+	if (
+		unbound_target_pot.can_receive_from_bowl(unbound_bowl)
+		or unbound_target_pot.receive_from_bowl(unbound_bowl)
+	):
+		_failures.append("Pot must reject an unbound OrderBowl")
+	if unbound_bowl.food_state != null or unbound_target_pot.food_state != null:
+		_failures.append("Unbound Bowl transfer failure must not create FoodState")
+	unbound_bowl.free()
+	unbound_target_pot.free()
+
+	var empty_bowl := bowl_scene.instantiate() as OrderBowl
+	var empty_target_pot := pot_scene.instantiate() as Pot
+	empty_bowl.bind_to_order(OrderData.new(&"empty_transfer_order", &"wide_noodle"))
+	var removed_food := empty_bowl.take_food_state()
+	if empty_target_pot.can_receive_from_bowl(empty_bowl) or empty_target_pot.receive_from_bowl(empty_bowl):
+		_failures.append("Pot must reject an Empty Order Bowl")
+	if empty_bowl.food_state != null or empty_target_pot.food_state != null or removed_food == null:
+		_failures.append("Empty Bowl transfer failure must preserve empty container states")
+	empty_bowl.free()
+	empty_target_pot.free()
+
+	var invalid_bowl := bowl_scene.instantiate() as OrderBowl
+	var invalid_target_pot := pot_scene.instantiate() as Pot
+	invalid_bowl.bind_to_order(OrderData.new(&"invalid_food_order", &"wide_noodle"))
+	var invalid_bowl_food := FoodState.new(&"", true, &"wide_noodle")
+	invalid_bowl.food_state = invalid_bowl_food
+	if (
+		invalid_target_pot.can_receive_from_bowl(invalid_bowl)
+		or invalid_target_pot.receive_from_bowl(invalid_bowl)
+	):
+		_failures.append("Pot must reject invalid FoodState in a Bowl")
+	if invalid_bowl.food_state != invalid_bowl_food or invalid_target_pot.food_state != null:
+		_failures.append("Invalid Bowl FoodState failure must preserve both containers")
+	invalid_bowl.free()
+	invalid_target_pot.free()
+
+	var mismatch_bowl := bowl_scene.instantiate() as OrderBowl
+	var mismatch_target_pot := pot_scene.instantiate() as Pot
+	mismatch_bowl.bind_to_order(OrderData.new(&"mismatch_bowl_order", &"wide_noodle"))
+	var mismatch_food := FoodState.new(&"different_food_order", true, &"wide_noodle")
+	mismatch_bowl.food_state = mismatch_food
+	if (
+		mismatch_target_pot.can_receive_from_bowl(mismatch_bowl)
+		or mismatch_target_pot.receive_from_bowl(mismatch_bowl)
+	):
+		_failures.append("Pot must reject Bowl and FoodState order mismatch")
+	if mismatch_bowl.food_state != mismatch_food or mismatch_target_pot.food_state != null:
+		_failures.append("Bowl order mismatch failure must preserve both containers")
+	mismatch_bowl.free()
+	mismatch_target_pot.free()
+
+	var rollback_bowl := bowl_scene.instantiate() as OrderBowl
+	rollback_bowl.bind_to_order(OrderData.new(&"rollback_order", &"wide_noodle"))
+	var rollback_food := rollback_bowl.food_state
+	var rejecting_pot := RejectingReceivePot.new()
+	if not rejecting_pot.can_receive_from_bowl(rollback_bowl):
+		_failures.append("RejectingReceivePot setup must pass transfer precheck")
+	if rejecting_pot.receive_from_bowl(rollback_bowl):
+		_failures.append("RejectingReceivePot must report transfer failure")
+	if (
+		rollback_bowl.order_id != &"rollback_order"
+		or rollback_bowl.food_state != rollback_food
+		or rejecting_pot.order_id != &""
+		or rejecting_pot.food_state != null
+	):
+		_failures.append("Failed Pot receipt must roll the exact FoodState back into its Bowl")
+	rollback_bowl.free()
+	rejecting_pot.free()
+
+
+func _check_pot_interaction_and_carry() -> void:
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	var counter_scene := load("res://scenes/test_counter.tscn") as PackedScene
+	if (
+		pot_scene == null
+		or bowl_scene == null
+		or player_scene == null
+		or carryable_scene == null
+		or counter_scene == null
+	):
+		return
+
+	var movement_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	if movement_scene != null:
+		var movement_test := movement_scene.instantiate()
+		var y_sort_world := movement_test.get_node("YSortWorld") as Node2D
+		var movement_pot := y_sort_world.get_node("PotA") as Pot
+		if movement_pot == null or movement_pot.get_parent() != y_sort_world:
+			_failures.append("MovementTest PotA must be a direct YSortWorld Pot")
+		elif movement_pot.z_index != 0 or movement_pot.position != Vector2(400.0, 160.0):
+			_failures.append("MovementTest PotA must keep its Phase 5 position and z_index 0")
+		movement_test.free()
+
+	var test_world := Node2D.new()
+	get_root().add_child(test_world)
+
+	var transfer_pot := pot_scene.instantiate() as Pot
+	transfer_pot.name = "InteractionTransferPot"
+	transfer_pot.position = Vector2(120.0, 40.0)
+	var source_player := player_scene.instantiate()
+	source_player.name = "PotTransferPlayer"
+	var source_bowl := bowl_scene.instantiate() as OrderBowl
+	source_bowl.name = "PotTransferBowl"
+	var source_order := OrderData.new(&"pot_interaction_order", &"wide_noodle")
+	source_bowl.bind_to_order(source_order)
+	source_bowl.add_staple(&"instant_noodle")
+	test_world.add_child(transfer_pot)
+	test_world.add_child(source_player)
+	test_world.add_child(source_bowl)
+	var source_carry := source_player.get_node("PlayerCarry") as PlayerCarry
+	source_carry.pickup(source_bowl)
+	var source_food := source_bowl.food_state
+	var transfer_pot_parent := transfer_pot.get_parent()
+	var transfer_pot_position := transfer_pot.position
+	transfer_pot.set_highlighted(true)
+	if not (transfer_pot.get_node("Highlight") as CanvasItem).visible:
+		_failures.append("Pot must inherit working Carryable highlight behavior")
+	transfer_pot.set_highlighted(false)
+	if not transfer_pot.can_interact(source_carry):
+		_failures.append("Ground empty Pot must be interactable while Player holds a valid Bowl")
+	if not transfer_pot.interact(source_carry):
+		_failures.append("Pot interaction must transfer FoodState from held OrderBowl")
+	if (
+		source_carry.get_held_item() != source_bowl
+		or source_bowl.order_id != source_order.order_id
+		or source_bowl.food_state != null
+		or transfer_pot.order_id != source_order.order_id
+		or transfer_pot.food_state != source_food
+		or source_food.staple_id != &"instant_noodle"
+		or transfer_pot.get_parent() != transfer_pot_parent
+		or transfer_pot.position != transfer_pot_position
+	):
+		_failures.append("Pot interaction must move only the FoodState and keep Bowl held and Pot grounded")
+
+	var occupied_player := player_scene.instantiate()
+	occupied_player.name = "OccupiedPotPlayer"
+	var occupied_source_bowl := bowl_scene.instantiate() as OrderBowl
+	occupied_source_bowl.name = "OccupiedPotSourceBowl"
+	var occupied_source_order := OrderData.new(&"occupied_source_order", &"wide_noodle")
+	occupied_source_bowl.bind_to_order(occupied_source_order)
+	test_world.add_child(occupied_player)
+	test_world.add_child(occupied_source_bowl)
+	var occupied_carry := occupied_player.get_node("PlayerCarry") as PlayerCarry
+	occupied_carry.pickup(occupied_source_bowl)
+	var occupied_source_food := occupied_source_bowl.food_state
+	var occupied_source_parent := occupied_source_bowl.get_parent()
+	var occupied_source_position := occupied_source_bowl.position
+	var occupied_source_holder := occupied_source_bowl.current_holder
+	var occupied_pot_food := transfer_pot.food_state
+	var occupied_pot_order := transfer_pot.order_id
+	var occupied_pot_parent := transfer_pot.get_parent()
+	var occupied_pot_position := transfer_pot.position
+	if transfer_pot.can_interact(occupied_carry) or transfer_pot.interact(occupied_carry):
+		_failures.append("Occupied Pot must reject a second held OrderBowl")
+	if (
+		occupied_carry.get_held_item() != occupied_source_bowl
+		or occupied_source_bowl.current_holder != occupied_source_holder
+		or occupied_source_bowl.get_parent() != occupied_source_parent
+		or occupied_source_bowl.position != occupied_source_position
+		or occupied_source_bowl.order_id != occupied_source_order.order_id
+		or occupied_source_bowl.food_state != occupied_source_food
+		or occupied_source_food.staple_id != &""
+		or transfer_pot.food_state != occupied_pot_food
+		or transfer_pot.order_id != occupied_pot_order
+		or transfer_pot.get_parent() != occupied_pot_parent
+		or transfer_pot.position != occupied_pot_position
+	):
+		_failures.append("Occupied Pot interaction failure must preserve Bowl, PlayerCarry, and Pot atomically")
+
+	var generic_target_pot := pot_scene.instantiate() as Pot
+	generic_target_pot.name = "GenericRejectionPot"
+	var generic_player := player_scene.instantiate()
+	generic_player.name = "PotGenericCarryPlayer"
+	var generic_item := carryable_scene.instantiate() as Carryable
+	generic_item.name = "PotGenericCarryItem"
+	test_world.add_child(generic_target_pot)
+	test_world.add_child(generic_player)
+	test_world.add_child(generic_item)
+	var generic_carry := generic_player.get_node("PlayerCarry") as PlayerCarry
+	generic_carry.pickup(generic_item)
+	if generic_target_pot.can_interact(generic_carry) or generic_target_pot.interact(generic_carry):
+		_failures.append("Pot must reject interaction while Player holds TestCarryable")
+	if generic_carry.get_held_item() != generic_item or generic_target_pot.food_state != null:
+		_failures.append("Generic Carryable rejection must preserve held item and Pot state")
+
+	var pot_carry_player := player_scene.instantiate()
+	pot_carry_player.name = "PotHoldingPotPlayer"
+	var held_input_pot := pot_scene.instantiate() as Pot
+	held_input_pot.name = "HeldInputPot"
+	test_world.add_child(pot_carry_player)
+	test_world.add_child(held_input_pot)
+	var pot_carry := pot_carry_player.get_node("PlayerCarry") as PlayerCarry
+	pot_carry.pickup(held_input_pot)
+	if generic_target_pot.can_interact(pot_carry) or generic_target_pot.interact(pot_carry):
+		_failures.append("Pot must reject interaction while Player holds another Pot")
+	if pot_carry.get_held_item() != held_input_pot or generic_target_pot.food_state != null:
+		_failures.append("Held Pot rejection must not swap or fill either Pot")
+
+	var empty_pickup_player := player_scene.instantiate()
+	empty_pickup_player.name = "EmptyPotPickupPlayer"
+	test_world.add_child(empty_pickup_player)
+	var empty_pickup_carry := empty_pickup_player.get_node("PlayerCarry") as PlayerCarry
+	if not generic_target_pot.can_interact(empty_pickup_carry):
+		_failures.append("Empty-hand Player must be able to interact with a free empty Pot")
+	if not generic_target_pot.interact(empty_pickup_carry):
+		_failures.append("Empty-hand Pot interaction must use Carryable pickup")
+	if empty_pickup_carry.get_held_item() != generic_target_pot:
+		_failures.append("Pot pickup must place the same Pot in PlayerCarry")
+
+	var constrained_pot := pot_scene.instantiate() as Pot
+	constrained_pot.name = "ConstrainedPot"
+	var constrained_player := player_scene.instantiate()
+	constrained_player.name = "ConstrainedPotPlayer"
+	var constrained_surface := counter_scene.instantiate() as PlacementSurface
+	constrained_surface.name = "ConstrainedPotCounter"
+	var constrained_source_bowl := bowl_scene.instantiate() as OrderBowl
+	constrained_source_bowl.name = "ConstrainedPotSourceBowl"
+	constrained_source_bowl.bind_to_order(OrderData.new(&"constrained_order", &"wide_noodle"))
+	test_world.add_child(constrained_pot)
+	test_world.add_child(constrained_player)
+	test_world.add_child(constrained_surface)
+	test_world.add_child(constrained_source_bowl)
+	var constrained_carry := constrained_player.get_node("PlayerCarry") as PlayerCarry
+	constrained_carry.pickup(constrained_pot)
+	var constrained_food := constrained_source_bowl.food_state
+	if (
+		constrained_pot.can_receive_from_bowl(constrained_source_bowl)
+		or constrained_pot.receive_from_bowl(constrained_source_bowl)
+	):
+		_failures.append("Held Pot public transfer API must reject Bowl input")
+	if constrained_source_bowl.food_state != constrained_food or constrained_pot.food_state != null:
+		_failures.append("Held Pot transfer rejection must preserve both containers")
+	if not constrained_carry.place_on(constrained_surface):
+		_failures.append("Empty Pot setup must place Pot on Counter")
+	if (
+		constrained_pot.can_receive_from_bowl(constrained_source_bowl)
+		or constrained_pot.receive_from_bowl(constrained_source_bowl)
+	):
+		_failures.append("Counter-placed Pot public transfer API must reject Bowl input")
+	if (
+		constrained_pot.current_surface != constrained_surface
+		or constrained_source_bowl.food_state != constrained_food
+		or constrained_pot.food_state != null
+	):
+		_failures.append("Counter Pot transfer rejection must preserve placement and container states")
+
+	var full_pot_food := transfer_pot.food_state
+	var full_pot_order := transfer_pot.order_id
+	var full_pot_staple := full_pot_food.staple_id
+	var full_pot_carrier := player_scene.instantiate()
+	full_pot_carrier.name = "FullPotCarrier"
+	var full_pot_receiver := player_scene.instantiate()
+	full_pot_receiver.name = "FullPotReceiver"
+	var full_pot_surface := counter_scene.instantiate() as PlacementSurface
+	full_pot_surface.name = "FullPotCounter"
+	test_world.add_child(full_pot_carrier)
+	test_world.add_child(full_pot_receiver)
+	test_world.add_child(full_pot_surface)
+	var full_pot_carry := full_pot_carrier.get_node("PlayerCarry") as PlayerCarry
+	var full_pot_receive_carry := full_pot_receiver.get_node("PlayerCarry") as PlayerCarry
+	if not transfer_pot.can_interact(full_pot_carry) or not transfer_pot.interact(full_pot_carry):
+		_failures.append("Empty-hand Player must be able to pick up a full Pot")
+	if not full_pot_carry.place_on(full_pot_surface):
+		_failures.append("Full Pot must place on a generic Counter")
+	if not full_pot_surface.interact(full_pot_receive_carry):
+		_failures.append("Empty PlayerCarry must take a full Pot from Counter")
+	if (
+		full_pot_receive_carry.get_held_item() != transfer_pot
+		or transfer_pot.order_id != full_pot_order
+		or transfer_pot.food_state != full_pot_food
+		or full_pot_food.staple_id != full_pot_staple
+	):
+		_failures.append("Full Pot pickup, Counter, and take flow must preserve business state")
+	if not full_pot_receive_carry.drop_to_world(Vector2(520.0, 240.0)):
+		_failures.append("Full Pot must support Floor Drop")
+	elif (
+		transfer_pot.get_parent() != test_world
+		or transfer_pot.current_holder != null
+		or transfer_pot.current_surface != null
+		or transfer_pot.order_id != full_pot_order
+		or transfer_pot.food_state != full_pot_food
+		or full_pot_food.staple_id != full_pot_staple
+	):
+		_failures.append("Full Pot Floor Drop must preserve FoodState identity and order")
 
 	test_world.free()
 
