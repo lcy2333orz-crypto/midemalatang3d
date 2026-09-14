@@ -29,6 +29,12 @@ z_index = 0
 polygon = PackedVector2Array(-13, -17, 13, -17, 10, -9, -10, -9)
 color = Color(0.75, 0.32, 0.2, 1)
 
+[node name="StapleVisual" type="Polygon2D" parent="."]
+visible = false
+z_index = 0
+polygon = PackedVector2Array(-11, -16, -5, -18, -2, -10, 3, -18, 8, -15, 5, -9, -7, -9)
+color = Color(0.78, 0.72, 0.58, 1)
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, -11)
 shape = SubResource("RectangleShape2D_order_bowl")

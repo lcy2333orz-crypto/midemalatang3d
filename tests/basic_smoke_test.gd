@@ -7,6 +7,7 @@ const SCENE_PATHS := [
 	"res://scenes/test_carryable.tscn",
 	"res://scenes/test_counter.tscn",
 	"res://scenes/order_bowl.tscn",
+	"res://scenes/staple_station.tscn",
 ]
 const MOVEMENT_ACTIONS := [
 	&"gameplay_move_up",
@@ -16,6 +17,16 @@ const MOVEMENT_ACTIONS := [
 ]
 
 var _failures: Array[String] = []
+
+
+class RejectingOrderBowl:
+	extends OrderBowl
+
+	func can_add_staple(_staple_id_to_add: StringName) -> bool:
+		return true
+
+	func add_staple(_staple_id_to_add: StringName) -> bool:
+		return false
 
 
 func _init() -> void:
@@ -34,8 +45,11 @@ func _run() -> void:
 	_check_interaction_contracts()
 	_check_carry_state_transitions()
 	_check_order_and_food_data()
+	_check_food_staple_rules()
 	_check_order_bowl_business_rules()
+	_check_order_bowl_staple_rules()
 	_check_order_bowl_carry_integration()
+	_check_staple_station_business_rules()
 	_check_localization()
 
 	if _failures.is_empty():
@@ -120,6 +134,8 @@ func _check_world_draw_order_structure() -> void:
 		&"TestCarryableA",
 		&"TestCarryableB",
 		&"OrderBowl",
+		&"WideNoodleStation",
+		&"InstantNoodleStation",
 	]:
 		var world_object := y_sort_world.get_node(NodePath(node_name)) as CanvasItem
 		if world_object == null or world_object.get_parent() != y_sort_world:
@@ -274,6 +290,33 @@ func _check_order_and_food_data() -> void:
 		_failures.append("FoodState with an empty order_id must be invalid")
 
 
+func _check_food_staple_rules() -> void:
+	var food := FoodState.new(&"order_test_001", true, &"")
+	if not food.can_add_staple(&"wide_noodle"):
+		_failures.append("Valid FoodState without a staple must accept a non-empty staple ID")
+	if not food.try_add_staple(&"wide_noodle"):
+		_failures.append("FoodState must add its first valid staple")
+	if food.staple_id != &"wide_noodle" or not food.has_staple():
+		_failures.append("FoodState must record the actual added staple")
+
+	if food.can_add_staple(&"instant_noodle") or food.try_add_staple(&"instant_noodle"):
+		_failures.append("FoodState must reject a second staple")
+	if food.staple_id != &"wide_noodle":
+		_failures.append("Rejected second staple must preserve the original staple")
+
+	var empty_id_food := FoodState.new(&"order_test_002", true, &"")
+	if empty_id_food.can_add_staple(&"") or empty_id_food.try_add_staple(&""):
+		_failures.append("FoodState must reject an empty staple ID")
+	if empty_id_food.staple_id != &"":
+		_failures.append("Rejected empty staple ID must not mutate FoodState")
+
+	var invalid_food := FoodState.new(&"", true, &"")
+	if invalid_food.can_add_staple(&"wide_noodle") or invalid_food.try_add_staple(&"wide_noodle"):
+		_failures.append("Invalid FoodState must reject staple addition")
+	if invalid_food.staple_id != &"":
+		_failures.append("Rejected addition must not repair invalid FoodState")
+
+
 func _check_order_bowl_business_rules() -> void:
 	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
 	if bowl_scene == null:
@@ -374,6 +417,92 @@ func _check_order_bowl_business_rules() -> void:
 	replacement_bowl.free()
 
 
+func _check_order_bowl_staple_rules() -> void:
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	if bowl_scene == null:
+		return
+
+	var order := OrderData.new(&"order_staple_test", &"wide_noodle")
+	var bowl := bowl_scene.instantiate() as OrderBowl
+	if bowl == null:
+		_failures.append("OrderBowl staple test must instantiate OrderBowl")
+		return
+	var staple_visual := bowl.get_node("StapleVisual") as Polygon2D
+	if not bowl.bind_to_order(order):
+		_failures.append("OrderBowl staple test must bind a valid order")
+	var original_food := bowl.food_state
+	if original_food == null:
+		_failures.append("Bound OrderBowl must contain FoodState before staple addition")
+	elif original_food.has_staple() or staple_visual.visible:
+		_failures.append("Newly bound OrderBowl must begin without a visible staple")
+	elif not bowl.can_add_staple(&"wide_noodle") or not bowl.add_staple(&"wide_noodle"):
+		_failures.append("OrderBowl must add the first staple through its business API")
+	elif (
+		bowl.food_state != original_food
+		or bowl.food_state.staple_id != &"wide_noodle"
+		or not staple_visual.visible
+	):
+		_failures.append("OrderBowl staple addition must preserve FoodState identity and refresh visuals")
+	if bowl.add_staple(&"instant_noodle"):
+		_failures.append("OrderBowl must reject replacing an existing staple")
+	if bowl.food_state != original_food or bowl.food_state.staple_id != &"wide_noodle":
+		_failures.append("Rejected replacement must preserve OrderBowl FoodState")
+	bowl.free()
+
+	var wrong_order := OrderData.new(&"order_wrong_test", &"wide_noodle")
+	var wrong_bowl := bowl_scene.instantiate() as OrderBowl
+	if not wrong_bowl.bind_to_order(wrong_order):
+		_failures.append("Wrong-staple Bowl must bind its order")
+	var wrong_food := wrong_bowl.food_state
+	if not wrong_bowl.add_staple(&"instant_noodle"):
+		_failures.append("OrderBowl must allow a staple that differs from the order requirement")
+	if (
+		wrong_order.required_staple_id != &"wide_noodle"
+		or wrong_bowl.food_state != wrong_food
+		or wrong_bowl.food_state.staple_id != &"instant_noodle"
+	):
+		_failures.append("Wrong staple must remain the actual station choice without correction")
+	wrong_bowl.free()
+
+	var empty_id_bowl := bowl_scene.instantiate() as OrderBowl
+	empty_id_bowl.bind_to_order(order)
+	var empty_id_food := empty_id_bowl.food_state
+	if empty_id_bowl.can_add_staple(&"") or empty_id_bowl.add_staple(&""):
+		_failures.append("OrderBowl must reject an empty staple ID")
+	if empty_id_bowl.food_state != empty_id_food or empty_id_food.staple_id != &"":
+		_failures.append("Empty staple failure must not replace or mutate FoodState")
+	empty_id_bowl.free()
+
+	var unbound_bowl := bowl_scene.instantiate() as OrderBowl
+	if unbound_bowl.can_add_staple(&"wide_noodle") or unbound_bowl.add_staple(&"wide_noodle"):
+		_failures.append("Unbound OrderBowl must reject staple addition")
+	if unbound_bowl.order_id != &"" or unbound_bowl.food_state != null:
+		_failures.append("Staple failure must not repair an unbound OrderBowl")
+	unbound_bowl.free()
+
+	var empty_bowl := bowl_scene.instantiate() as OrderBowl
+	empty_bowl.bind_to_order(order)
+	var removed_food := empty_bowl.take_food_state()
+	var empty_bowl_order_id := empty_bowl.order_id
+	if empty_bowl.can_add_staple(&"wide_noodle") or empty_bowl.add_staple(&"wide_noodle"):
+		_failures.append("Empty OrderBowl must reject staple addition")
+	if empty_bowl.food_state != null or empty_bowl.order_id != empty_bowl_order_id:
+		_failures.append("Staple failure must not rebuild Empty Bowl FoodState")
+	if removed_food == null:
+		_failures.append("Empty Bowl setup must retain the removed FoodState instance")
+	empty_bowl.free()
+
+	var mismatch_bowl := bowl_scene.instantiate() as OrderBowl
+	mismatch_bowl.bind_to_order(order)
+	var mismatch_food := FoodState.new(&"different_order", true, &"")
+	mismatch_bowl.food_state = mismatch_food
+	if mismatch_bowl.can_add_staple(&"wide_noodle") or mismatch_bowl.add_staple(&"wide_noodle"):
+		_failures.append("OrderBowl must reject staple addition for mismatched FoodState order_id")
+	if mismatch_bowl.food_state != mismatch_food or mismatch_food.staple_id != &"":
+		_failures.append("Order mismatch failure must preserve the original FoodState reference and contents")
+	mismatch_bowl.free()
+
+
 func _check_order_bowl_carry_integration() -> void:
 	var player_scene := load("res://scenes/player.tscn") as PackedScene
 	var counter_scene := load("res://scenes/test_counter.tscn") as PackedScene
@@ -428,6 +557,231 @@ func _check_order_bowl_carry_integration() -> void:
 		or bowl.food_state != null
 	):
 		_failures.append("Empty OrderBowl carry flow must preserve empty order state")
+
+	test_world.free()
+
+
+func _check_staple_station_business_rules() -> void:
+	var station_scene := load("res://scenes/staple_station.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	var counter_scene := load("res://scenes/test_counter.tscn") as PackedScene
+	if (
+		station_scene == null
+		or player_scene == null
+		or carryable_scene == null
+		or bowl_scene == null
+		or counter_scene == null
+	):
+		return
+
+	var station := station_scene.instantiate() as StapleStation
+	if station == null:
+		_failures.append("StapleStation scene must instantiate as StapleStation")
+		return
+	var highlight := station.get_node("Highlight") as Polygon2D
+	var station_top := station.get_node("StationTop") as Polygon2D
+	var station_front := station.get_node("StationFront") as Polygon2D
+	var interaction_shape := station.get_node("InteractionShape") as CollisionShape2D
+	var static_body := station.get_node("StaticBody2D") as StaticBody2D
+	var static_shape := station.get_node("StaticBody2D/CollisionShape2D") as CollisionShape2D
+	if station.z_index != 0 or highlight.z_index != 0:
+		_failures.append("StapleStation root and Highlight must remain at z_index 0")
+	if station_top.z_index != 0 or station_front.z_index != 0:
+		_failures.append("StapleStation visuals must remain at z_index 0")
+	if highlight.get_index() >= station_top.get_index() or highlight.get_index() >= station_front.get_index():
+		_failures.append("StapleStation Highlight must draw before station visuals by sibling order")
+	if interaction_shape.get_parent() != station:
+		_failures.append("StapleStation interaction collision must remain on the Area2D root")
+	if static_body.get_parent() != station or static_shape.get_parent() != static_body:
+		_failures.append("StapleStation must contain a separate StaticBody2D collision")
+	if station.collision_layer != 4 or static_body.collision_layer != 1:
+		_failures.append("StapleStation must use interaction layer 3 and world collision layer 1")
+	for method_name in [&"can_interact", &"interact", &"set_highlighted"]:
+		if not station.has_method(method_name):
+			_failures.append("StapleStation missing generic interaction method: %s" % method_name)
+	for property_data: Dictionary in station.get_property_list():
+		var property_name := StringName(property_data.get("name", ""))
+		if property_name in [&"current_bowl", &"current_player", &"current_carry"]:
+			_failures.append("StapleStation must not retain long-lived interaction reference: %s" % property_name)
+
+	var movement_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	if movement_scene != null:
+		var movement_test := movement_scene.instantiate()
+		var y_sort_world := movement_test.get_node("YSortWorld") as Node2D
+		var wide_station := y_sort_world.get_node("WideNoodleStation") as StapleStation
+		var instant_station := y_sort_world.get_node("InstantNoodleStation") as StapleStation
+		if wide_station.staple_id != &"wide_noodle":
+			_failures.append("WideNoodleStation must use the stable wide_noodle gameplay ID")
+		if instant_station.staple_id != &"instant_noodle":
+			_failures.append("InstantNoodleStation must use the stable instant_noodle gameplay ID")
+		if wide_station.get_parent() != y_sort_world or instant_station.get_parent() != y_sort_world:
+			_failures.append("Staple stations must be direct YSortWorld children")
+		movement_test.free()
+
+	var test_world := Node2D.new()
+	get_root().add_child(test_world)
+	test_world.add_child(station)
+	station.set_highlighted(true)
+	if not highlight.visible:
+		_failures.append("StapleStation must show Highlight when selected")
+	station.set_highlighted(false)
+	if highlight.visible:
+		_failures.append("StapleStation must hide Highlight when deselected")
+
+	var empty_player := player_scene.instantiate()
+	empty_player.name = "EmptyHandPlayer"
+	test_world.add_child(empty_player)
+	var empty_carry := empty_player.get_node("PlayerCarry") as PlayerCarry
+	station.staple_id = &"wide_noodle"
+	if station.can_interact(empty_carry) or station.interact(empty_carry):
+		_failures.append("StapleStation must reject empty-hand interaction")
+
+	var generic_player := player_scene.instantiate()
+	generic_player.name = "GenericCarryPlayer"
+	var generic_item := carryable_scene.instantiate() as Carryable
+	generic_item.name = "GenericCarryItem"
+	test_world.add_child(generic_player)
+	test_world.add_child(generic_item)
+	var generic_carry := generic_player.get_node("PlayerCarry") as PlayerCarry
+	if not generic_carry.pickup(generic_item):
+		_failures.append("Generic carry setup must pick up TestCarryable")
+	if station.can_interact(generic_carry) or station.interact(generic_carry):
+		_failures.append("StapleStation must reject a non-OrderBowl Carryable")
+
+	var unbound_player := player_scene.instantiate()
+	unbound_player.name = "UnboundBowlPlayer"
+	var unbound_bowl := bowl_scene.instantiate() as OrderBowl
+	unbound_bowl.name = "UnboundBowl"
+	test_world.add_child(unbound_player)
+	test_world.add_child(unbound_bowl)
+	var unbound_carry := unbound_player.get_node("PlayerCarry") as PlayerCarry
+	unbound_carry.pickup(unbound_bowl)
+	if station.can_interact(unbound_carry) or station.interact(unbound_carry):
+		_failures.append("StapleStation must reject an unbound OrderBowl")
+	if unbound_bowl.food_state != null:
+		_failures.append("StapleStation must not create FoodState for an unbound Bowl")
+
+	var empty_bowl_player := player_scene.instantiate()
+	empty_bowl_player.name = "EmptyBowlPlayer"
+	var empty_bowl := bowl_scene.instantiate() as OrderBowl
+	empty_bowl.name = "EmptyOrderBowl"
+	empty_bowl.bind_to_order(OrderData.new(&"empty_bowl_order", &"wide_noodle"))
+	empty_bowl.take_food_state()
+	test_world.add_child(empty_bowl_player)
+	test_world.add_child(empty_bowl)
+	var empty_bowl_carry := empty_bowl_player.get_node("PlayerCarry") as PlayerCarry
+	empty_bowl_carry.pickup(empty_bowl)
+	if station.can_interact(empty_bowl_carry) or station.interact(empty_bowl_carry):
+		_failures.append("StapleStation must reject an Empty Order Bowl")
+	if empty_bowl.food_state != null:
+		_failures.append("StapleStation must not restore Empty Bowl FoodState")
+
+	var valid_player := player_scene.instantiate()
+	valid_player.name = "ValidBowlPlayer"
+	var valid_bowl := bowl_scene.instantiate() as OrderBowl
+	valid_bowl.name = "ValidOrderBowl"
+	var required_wide_order := OrderData.new(&"station_wrong_staple_order", &"wide_noodle")
+	valid_bowl.bind_to_order(required_wide_order)
+	test_world.add_child(valid_player)
+	test_world.add_child(valid_bowl)
+	var valid_carry := valid_player.get_node("PlayerCarry") as PlayerCarry
+	valid_carry.pickup(valid_bowl)
+	var valid_food := valid_bowl.food_state
+	var held_parent := valid_bowl.get_parent()
+	station.staple_id = &""
+	if station.can_interact(valid_carry) or station.interact(valid_carry):
+		_failures.append("StapleStation with an empty staple_id must reject a valid Bowl")
+	if valid_carry.get_held_item() != valid_bowl or valid_bowl.get_parent() != held_parent:
+		_failures.append("Empty station interaction must preserve Bowl carry state")
+
+	station.staple_id = &"instant_noodle"
+	if not station.can_interact(valid_carry):
+		_failures.append("Wrong StapleStation must remain interactable for a valid Bowl")
+	if not station.interact(valid_carry):
+		_failures.append("Wrong StapleStation interaction must succeed")
+	if (
+		required_wide_order.required_staple_id != &"wide_noodle"
+		or valid_carry.get_held_item() != valid_bowl
+		or valid_bowl.food_state != valid_food
+		or valid_food.staple_id != &"instant_noodle"
+	):
+		_failures.append("Wrong station must record instant_noodle without replacing Bowl or FoodState")
+
+	station.staple_id = &"wide_noodle"
+	var second_attempt_parent := valid_bowl.get_parent()
+	var second_attempt_position := valid_bowl.position
+	if station.can_interact(valid_carry) or station.interact(valid_carry):
+		_failures.append("A second StapleStation must not replace the existing staple")
+	if (
+		valid_carry.get_held_item() != valid_bowl
+		or valid_bowl.get_parent() != second_attempt_parent
+		or valid_bowl.position != second_attempt_position
+		or valid_bowl.food_state != valid_food
+		or valid_food.staple_id != &"instant_noodle"
+	):
+		_failures.append("Rejected second station interaction must be atomic")
+
+	var rejecting_player := player_scene.instantiate()
+	rejecting_player.name = "RejectingBowlPlayer"
+	var rejecting_bowl := RejectingOrderBowl.new()
+	rejecting_bowl.name = "RejectingOrderBowl"
+	var rejecting_highlight := Polygon2D.new()
+	rejecting_highlight.name = "Highlight"
+	rejecting_bowl.add_child(rejecting_highlight)
+	rejecting_bowl.order_id = &"rejecting_order"
+	rejecting_bowl.food_state = FoodState.new(&"rejecting_order", true, &"")
+	test_world.add_child(rejecting_player)
+	test_world.add_child(rejecting_bowl)
+	var rejecting_carry := rejecting_player.get_node("PlayerCarry") as PlayerCarry
+	rejecting_carry.pickup(rejecting_bowl)
+	station.staple_id = &"instant_noodle"
+	var rejecting_food := rejecting_bowl.food_state
+	var rejecting_parent := rejecting_bowl.get_parent()
+	var rejecting_position := rejecting_bowl.position
+	var rejecting_holder := rejecting_bowl.current_holder
+	if not station.can_interact(rejecting_carry):
+		_failures.append("Atomic failure test Bowl must pass Station preconditions")
+	if station.interact(rejecting_carry):
+		_failures.append("StapleStation must return Bowl.add_staple failure unchanged")
+	if (
+		rejecting_carry.get_held_item() != rejecting_bowl
+		or rejecting_bowl.current_holder != rejecting_holder
+		or rejecting_bowl.get_parent() != rejecting_parent
+		or rejecting_bowl.position != rejecting_position
+		or rejecting_bowl.food_state != rejecting_food
+		or rejecting_food.staple_id != &""
+	):
+		_failures.append("Bowl.add_staple failure must not reparent, drop, place, or mutate state")
+
+	var surface := counter_scene.instantiate() as PlacementSurface
+	surface.name = "StapleCarryRegressionCounter"
+	var receiving_player := player_scene.instantiate()
+	receiving_player.name = "StapleCarryReceivingPlayer"
+	test_world.add_child(surface)
+	test_world.add_child(receiving_player)
+	var receiving_carry := receiving_player.get_node("PlayerCarry") as PlayerCarry
+	if not valid_carry.place_on(surface):
+		_failures.append("OrderBowl with a staple must still place on a Counter")
+	if not surface.interact(receiving_carry):
+		_failures.append("OrderBowl with a staple must still be taken from a Counter")
+	if (
+		receiving_carry.get_held_item() != valid_bowl
+		or valid_bowl.order_id != required_wide_order.order_id
+		or valid_bowl.food_state != valid_food
+		or valid_food.staple_id != &"instant_noodle"
+	):
+		_failures.append("Counter carry flow must preserve staple Bowl business state")
+	if not receiving_carry.drop_to_world(Vector2(320.0, 220.0)):
+		_failures.append("OrderBowl with a staple must still support Floor Drop")
+	elif (
+		valid_bowl.get_parent() != test_world
+		or valid_bowl.order_id != required_wide_order.order_id
+		or valid_bowl.food_state != valid_food
+		or valid_food.staple_id != &"instant_noodle"
+	):
+		_failures.append("Floor Drop must preserve staple Bowl business state")
 
 	test_world.free()
 

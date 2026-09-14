@@ -1,9 +1,10 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/test_carryable.tscn" id="2_carryable"]
 [ext_resource type="PackedScene" path="res://scenes/test_counter.tscn" id="3_counter"]
 [ext_resource type="PackedScene" path="res://scenes/order_bowl.tscn" id="4_order_bowl"]
+[ext_resource type="PackedScene" path="res://scenes/staple_station.tscn" id="5_staple_station"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1280, 32)
@@ -111,6 +112,16 @@ position = Vector2(105, 92)
 
 [node name="OrderBowl" parent="YSortWorld" instance=ExtResource("4_order_bowl")]
 position = Vector2(0, 36)
+
+[node name="WideNoodleStation" parent="YSortWorld" instance=ExtResource("5_staple_station")]
+modulate = Color(0.78, 0.88, 1, 1)
+position = Vector2(-440, -80)
+staple_id = &"wide_noodle"
+
+[node name="InstantNoodleStation" parent="YSortWorld" instance=ExtResource("5_staple_station")]
+modulate = Color(1, 0.82, 0.62, 1)
+position = Vector2(440, -80)
+staple_id = &"instant_noodle"
 
 [node name="VerticalObstacle" type="Node2D" parent="YSortWorld"]
 position = Vector2(260, 150)
