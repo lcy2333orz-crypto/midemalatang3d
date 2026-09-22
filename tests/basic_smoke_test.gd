@@ -9,6 +9,7 @@ const SCENE_PATHS := [
 	"res://scenes/order_bowl.tscn",
 	"res://scenes/staple_station.tscn",
 	"res://scenes/pot.tscn",
+	"res://scenes/stove_station.tscn",
 ]
 const MOVEMENT_ACTIONS := [
 	&"gameplay_move_up",
@@ -54,12 +55,14 @@ func _run() -> void:
 	_check_carry_state_transitions()
 	_check_order_and_food_data()
 	_check_food_staple_rules()
+	_check_food_cooking_rules()
 	_check_order_bowl_business_rules()
 	_check_order_bowl_staple_rules()
 	_check_order_bowl_carry_integration()
 	_check_staple_station_business_rules()
 	_check_pot_business_rules()
 	_check_pot_interaction_and_carry()
+	_check_stove_business_rules()
 	_check_localization()
 
 	if _failures.is_empty():
@@ -147,6 +150,7 @@ func _check_world_draw_order_structure() -> void:
 		&"PotA",
 		&"WideNoodleStation",
 		&"InstantNoodleStation",
+		&"StoveA",
 	]:
 		var world_object := y_sort_world.get_node(NodePath(node_name)) as CanvasItem
 		if world_object == null or world_object.get_parent() != y_sort_world:
@@ -326,6 +330,35 @@ func _check_food_staple_rules() -> void:
 		_failures.append("Invalid FoodState must reject staple addition")
 	if invalid_food.staple_id != &"":
 		_failures.append("Rejected addition must not repair invalid FoodState")
+
+
+func _check_food_cooking_rules() -> void:
+	var food := FoodState.new(&"cooking_order", true, &"wide_noodle")
+	if food.heat_progress != 0.0 or food.cooking_state != FoodState.CookingState.RAW:
+		_failures.append("FoodState must begin at zero heat in RAW state")
+	if not food.add_heat(0.25) or food.cooking_state != FoodState.CookingState.COOKING:
+		_failures.append("Positive sub-one heat must move FoodState to COOKING")
+	if not food.add_heat(0.75) or food.cooking_state != FoodState.CookingState.COOKED:
+		_failures.append("Heat at one must move FoodState to COOKED")
+	if not food.add_heat(1.0) or food.cooking_state != FoodState.CookingState.OVERCOOKING:
+		_failures.append("Heat at two must move FoodState to OVERCOOKING")
+	if not food.add_heat(2.0) or food.cooking_state != FoodState.CookingState.BURNT:
+		_failures.append("Heat at three must move FoodState to BURNT")
+	if food.heat_progress != 3.0:
+		_failures.append("FoodState heat must clamp at three")
+	if food.add_heat(0.5) or food.heat_progress != 3.0:
+		_failures.append("BURNT FoodState must reject further heat without mutation")
+	if not food.is_cooked_or_beyond():
+		_failures.append("BURNT FoodState must count as cooked or beyond")
+
+	var invalid_food := FoodState.new(&"", true, &"wide_noodle")
+	var empty_food := FoodState.new(&"empty_cooking_order", false, &"")
+	if invalid_food.can_receive_heat() or invalid_food.add_heat(0.5):
+		_failures.append("Invalid FoodState must reject heat")
+	if empty_food.can_receive_heat() or empty_food.add_heat(0.5):
+		_failures.append("Empty FoodState must reject heat")
+	if food.add_heat(0.0) or food.add_heat(-1.0):
+		_failures.append("FoodState must reject non-positive heat")
 
 
 func _check_order_bowl_business_rules() -> void:
@@ -1253,6 +1286,133 @@ func _check_pot_interaction_and_carry() -> void:
 		or full_pot_food.staple_id != full_pot_staple
 	):
 		_failures.append("Full Pot Floor Drop must preserve FoodState identity and order")
+
+	test_world.free()
+
+
+func _check_stove_business_rules() -> void:
+	var stove_scene := load("res://scenes/stove_station.tscn") as PackedScene
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	if (
+		stove_scene == null
+		or pot_scene == null
+		or bowl_scene == null
+		or player_scene == null
+		or carryable_scene == null
+	):
+		return
+
+	var movement_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	if movement_scene != null:
+		var movement_test := movement_scene.instantiate()
+		var y_sort_world := movement_test.get_node("YSortWorld") as Node2D
+		var movement_stove := y_sort_world.get_node("StoveA") as StoveStation
+		if movement_stove == null or movement_stove.get_parent() != y_sort_world:
+			_failures.append("MovementTest StoveA must be a direct YSortWorld StoveStation")
+		elif movement_stove.z_index != 0:
+			_failures.append("MovementTest StoveA must remain at world z_index 0")
+		movement_test.free()
+
+	var test_world := Node2D.new()
+	get_root().add_child(test_world)
+	var stove := stove_scene.instantiate() as StoveStation
+	var empty_pot := pot_scene.instantiate() as Pot
+	var generic_item := carryable_scene.instantiate() as Carryable
+	var order_bowl := bowl_scene.instantiate() as OrderBowl
+	var pot_player := player_scene.instantiate()
+	var generic_player := player_scene.instantiate()
+	var bowl_player := player_scene.instantiate()
+	generic_player.name = "StoveGenericPlayer"
+	bowl_player.name = "StoveBowlPlayer"
+	test_world.add_child(stove)
+	test_world.add_child(empty_pot)
+	test_world.add_child(generic_item)
+	test_world.add_child(order_bowl)
+	test_world.add_child(pot_player)
+	test_world.add_child(generic_player)
+	test_world.add_child(bowl_player)
+
+	var pot_carry := pot_player.get_node("PlayerCarry") as PlayerCarry
+	var generic_carry := generic_player.get_node("PlayerCarry") as PlayerCarry
+	var bowl_carry := bowl_player.get_node("PlayerCarry") as PlayerCarry
+	generic_carry.pickup(generic_item)
+	bowl_carry.pickup(order_bowl)
+	if stove.place_item(generic_item) or generic_carry.place_on(stove):
+		_failures.append("Stove must reject TestCarryable through direct placement APIs")
+	if stove.place_item(order_bowl) or bowl_carry.place_on(stove):
+		_failures.append("Stove must reject OrderBowl through direct placement APIs")
+	if generic_carry.get_held_item() != generic_item or bowl_carry.get_held_item() != order_bowl:
+		_failures.append("Rejected Stove placements must preserve held items")
+
+	if not pot_carry.pickup(empty_pot) or not pot_carry.place_on(stove):
+		_failures.append("Stove must accept an empty Pot")
+	if stove.occupied_item != empty_pot or empty_pot.food_state != null:
+		_failures.append("Empty Pot placement must not create FoodState")
+	stove.call("_physics_process", 1.0)
+	if empty_pot.food_state != null:
+		_failures.append("Heating an empty Pot must not create FoodState")
+	if not stove.interact(pot_carry) or pot_carry.get_held_item() != empty_pot:
+		_failures.append("Empty-hand PlayerCarry must take Pot from Stove")
+	if stove.occupied_item != null:
+		_failures.append("Taking Pot must clear Stove occupancy")
+
+	var full_pot := pot_scene.instantiate() as Pot
+	var source_bowl := bowl_scene.instantiate() as OrderBowl
+	var full_pot_player := player_scene.instantiate()
+	full_pot_player.name = "FullStovePotPlayer"
+	test_world.add_child(full_pot)
+	test_world.add_child(source_bowl)
+	test_world.add_child(full_pot_player)
+	source_bowl.bind_to_order(OrderData.new(&"stove_order", &"wide_noodle"))
+	source_bowl.add_staple(&"instant_noodle")
+	var original_food := source_bowl.food_state
+	if not full_pot.receive_from_bowl(source_bowl):
+		_failures.append("Stove test setup must transfer Bowl FoodState into Pot")
+	var full_pot_carry := full_pot_player.get_node("PlayerCarry") as PlayerCarry
+	if not full_pot_carry.pickup(full_pot) or not full_pot_carry.place_on(stove):
+		_failures.append("Full Pot must place on Stove")
+
+	var original_order := full_pot.order_id
+	var original_staple := original_food.staple_id
+	stove.heat_rate_per_second = 0.5
+	stove.is_powered = true
+	stove.call("_physics_process", 1.0)
+	if original_food.heat_progress != 0.5 or original_food.cooking_state != FoodState.CookingState.COOKING:
+		_failures.append("Powered Stove must heat its placed full Pot")
+	if (
+		full_pot.food_state != original_food
+		or full_pot.order_id != original_order
+		or original_food.order_id != original_order
+		or original_food.staple_id != original_staple
+	):
+		_failures.append("Stove heating must preserve Pot order, FoodState identity, and staple")
+
+	stove.is_powered = false
+	var heat_before_disabled := original_food.heat_progress
+	stove.call("_physics_process", 1.0)
+	if original_food.heat_progress != heat_before_disabled:
+		_failures.append("Unpowered Stove must not add heat")
+	stove.is_powered = true
+	stove.heat_rate_per_second = 0.0
+	stove.call("_physics_process", 1.0)
+	if original_food.heat_progress != heat_before_disabled:
+		_failures.append("Stove with non-positive heat rate must not add heat")
+
+	stove.heat_rate_per_second = 0.5
+	stove.call("_physics_process", 1.0)
+	if original_food.cooking_state != FoodState.CookingState.COOKED:
+		_failures.append("Wrong-staple FoodState must still cook normally")
+	if not stove.interact(full_pot_carry):
+		_failures.append("Player must be able to take a full Pot from Stove")
+	var heat_off_stove := original_food.heat_progress
+	stove.call("_physics_process", 2.0)
+	if original_food.heat_progress != heat_off_stove:
+		_failures.append("Pot removed from Stove must stop heating without losing accumulated heat")
+	if full_pot.food_state != original_food or full_pot.order_id != original_order:
+		_failures.append("Removing Pot from Stove must preserve Pot business state")
 
 	test_world.free()
 

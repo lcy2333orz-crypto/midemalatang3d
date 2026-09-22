@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/test_carryable.tscn" id="2_carryable"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/order_bowl.tscn" id="4_order_bowl"]
 [ext_resource type="PackedScene" path="res://scenes/staple_station.tscn" id="5_staple_station"]
 [ext_resource type="PackedScene" path="res://scenes/pot.tscn" id="6_pot"]
+[ext_resource type="PackedScene" path="res://scenes/stove_station.tscn" id="7_stove"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1280, 32)
@@ -116,6 +117,9 @@ position = Vector2(0, 36)
 
 [node name="PotA" parent="YSortWorld" instance=ExtResource("6_pot")]
 position = Vector2(400, 160)
+
+[node name="StoveA" parent="YSortWorld" instance=ExtResource("7_stove")]
+position = Vector2(260, -160)
 
 [node name="WideNoodleStation" parent="YSortWorld" instance=ExtResource("5_staple_station")]
 modulate = Color(0.78, 0.88, 1, 1)

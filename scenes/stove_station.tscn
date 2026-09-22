@@ -1,0 +1,48 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/stove_station.gd" id="1_stove"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_interaction"]
+size = Vector2(180, 116)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_static"]
+size = Vector2(140, 40)
+
+[node name="StoveStation" type="Area2D"]
+z_index = 0
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("1_stove")
+
+[node name="Highlight" type="Polygon2D" parent="."]
+visible = false
+z_index = 0
+polygon = PackedVector2Array(-75, -77, 75, -77, 75, 5, -75, 5)
+color = Color(0.95, 0.9, 0.3, 0.62)
+
+[node name="StoveTop" type="Polygon2D" parent="."]
+z_index = 0
+polygon = PackedVector2Array(-70, -72, 70, -72, 70, -32, -70, -32)
+color = Color(0.24, 0.26, 0.28, 1)
+
+[node name="StoveFront" type="Polygon2D" parent="."]
+z_index = 0
+polygon = PackedVector2Array(-70, -32, 70, -32, 70, 0, -70, 0)
+color = Color(0.36, 0.38, 0.4, 1)
+
+[node name="ItemAnchor" type="Marker2D" parent="."]
+z_index = 0
+position = Vector2(0, -42)
+
+[node name="InteractionShape" type="CollisionShape2D" parent="."]
+position = Vector2(0, -36)
+shape = SubResource("RectangleShape2D_interaction")
+
+[node name="StaticBody2D" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D"]
+position = Vector2(0, -20)
+shape = SubResource("RectangleShape2D_static")
