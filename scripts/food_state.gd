@@ -14,6 +14,7 @@ var base_food_present: bool = true
 var staple_id: StringName = &""
 var heat_progress: float = 0.0
 var cooking_state: CookingState = CookingState.RAW
+var condiment_ids: Array[StringName] = []
 
 
 func _init(
@@ -69,6 +70,28 @@ func add_heat(amount: float) -> bool:
 
 func is_cooked_or_beyond() -> bool:
 	return cooking_state >= CookingState.COOKED
+
+
+func has_condiment(condiment_id: StringName) -> bool:
+	return condiment_id in condiment_ids
+
+
+func can_add_condiment(condiment_id: StringName) -> bool:
+	return (
+		is_valid()
+		and not is_empty()
+		and is_cooked_or_beyond()
+		and not condiment_id.is_empty()
+		and not has_condiment(condiment_id)
+	)
+
+
+func try_add_condiment(condiment_id: StringName) -> bool:
+	if not can_add_condiment(condiment_id):
+		return false
+
+	condiment_ids.append(condiment_id)
+	return true
 
 
 func _refresh_cooking_state() -> void:

@@ -10,6 +10,7 @@ const SCENE_PATHS := [
 	"res://scenes/staple_station.tscn",
 	"res://scenes/pot.tscn",
 	"res://scenes/stove_station.tscn",
+	"res://scenes/condiment_station.tscn",
 ]
 const MOVEMENT_ACTIONS := [
 	&"gameplay_move_up",
@@ -63,10 +64,13 @@ func _run() -> void:
 	_check_order_and_food_data()
 	_check_food_staple_rules()
 	_check_food_cooking_rules()
+	_check_food_condiment_rules()
 	_check_order_bowl_business_rules()
 	_check_order_bowl_staple_rules()
+	_check_order_bowl_condiment_rules()
 	_check_order_bowl_carry_integration()
 	_check_staple_station_business_rules()
+	_check_condiment_station_business_rules()
 	_check_pot_business_rules()
 	_check_pot_return_transfer_rules()
 	_check_pot_interaction_and_carry()
@@ -159,6 +163,8 @@ func _check_world_draw_order_structure() -> void:
 		&"WideNoodleStation",
 		&"InstantNoodleStation",
 		&"StoveA",
+		&"GarlicStation",
+		&"CilantroStation",
 	]:
 		var world_object := y_sort_world.get_node(NodePath(node_name)) as CanvasItem
 		if world_object == null or world_object.get_parent() != y_sort_world:
@@ -369,6 +375,56 @@ func _check_food_cooking_rules() -> void:
 		_failures.append("FoodState must reject non-positive heat")
 
 
+func _check_food_condiment_rules() -> void:
+	var food := FoodState.new(&"condiment_order", true, &"wide_noodle")
+	var original_order := food.order_id
+	var original_staple := food.staple_id
+	if food.can_add_condiment(&"garlic") or food.try_add_condiment(&"garlic"):
+		_failures.append("RAW FoodState must reject condiment")
+	food.add_heat(0.5)
+	if food.can_add_condiment(&"garlic") or food.try_add_condiment(&"garlic"):
+		_failures.append("COOKING FoodState must reject condiment")
+	food.add_heat(0.5)
+	if not food.can_add_condiment(&"garlic") or not food.try_add_condiment(&"garlic"):
+		_failures.append("COOKED FoodState must accept its first condiment")
+	if not food.has_condiment(&"garlic") or food.condiment_ids.count(&"garlic") != 1:
+		_failures.append("FoodState must record garlic exactly once")
+	var condiment_count := food.condiment_ids.size()
+	if food.can_add_condiment(&"garlic") or food.try_add_condiment(&"garlic"):
+		_failures.append("FoodState must reject duplicate condiment")
+	if food.condiment_ids.size() != condiment_count or food.condiment_ids.count(&"garlic") != 1:
+		_failures.append("Duplicate condiment rejection must preserve the condiment array")
+	if not food.try_add_condiment(&"cilantro"):
+		_failures.append("FoodState must allow a different second condiment")
+	if food.condiment_ids.count(&"garlic") != 1 or food.condiment_ids.count(&"cilantro") != 1:
+		_failures.append("FoodState must retain garlic and cilantro exactly once each")
+	if food.try_add_condiment(&""):
+		_failures.append("FoodState must reject an empty condiment ID")
+	if (
+		food.order_id != original_order
+		or food.staple_id != original_staple
+		or not food.base_food_present
+		or food.heat_progress != 1.0
+		or food.cooking_state != FoodState.CookingState.COOKED
+	):
+		_failures.append("Condiment addition must not change staple or cooking data")
+
+	var overcooking_food := FoodState.new(&"overcooking_condiment", true, &"")
+	overcooking_food.add_heat(2.0)
+	if not overcooking_food.try_add_condiment(&"garlic"):
+		_failures.append("OVERCOOKING FoodState must accept condiment")
+	var burnt_food := FoodState.new(&"burnt_condiment", true, &"")
+	burnt_food.add_heat(3.0)
+	if not burnt_food.try_add_condiment(&"cilantro"):
+		_failures.append("BURNT FoodState must accept condiment")
+	var invalid_food := FoodState.new(&"", true, &"")
+	var empty_food := FoodState.new(&"empty_condiment", false, &"")
+	invalid_food.cooking_state = FoodState.CookingState.COOKED
+	empty_food.cooking_state = FoodState.CookingState.COOKED
+	if invalid_food.try_add_condiment(&"garlic") or empty_food.try_add_condiment(&"garlic"):
+		_failures.append("Invalid or empty FoodState must reject condiment")
+
+
 func _check_order_bowl_business_rules() -> void:
 	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
 	if bowl_scene == null:
@@ -553,6 +609,47 @@ func _check_order_bowl_staple_rules() -> void:
 	if mismatch_bowl.food_state != mismatch_food or mismatch_food.staple_id != &"":
 		_failures.append("Order mismatch failure must preserve the original FoodState reference and contents")
 	mismatch_bowl.free()
+
+
+func _check_order_bowl_condiment_rules() -> void:
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	if bowl_scene == null:
+		return
+
+	var unbound_bowl := bowl_scene.instantiate() as OrderBowl
+	if unbound_bowl.can_add_condiment(&"garlic") or unbound_bowl.add_condiment(&"garlic"):
+		_failures.append("Unbound OrderBowl must reject condiment")
+	unbound_bowl.free()
+
+	var bowl := bowl_scene.instantiate() as OrderBowl
+	var condiment_visual := bowl.get_node("CondimentVisual") as CanvasItem
+	if condiment_visual.z_index != 0 or condiment_visual.visible:
+		_failures.append("OrderBowl CondimentVisual must begin hidden at z_index 0")
+	bowl.bind_to_order(OrderData.new(&"bowl_condiment", &"wide_noodle"))
+	bowl.add_staple(&"wide_noodle")
+	var original_food := bowl.food_state
+	var empty_state := bowl.take_food_state()
+	if bowl.can_add_condiment(&"garlic") or bowl.add_condiment(&"garlic"):
+		_failures.append("Empty bound OrderBowl must reject condiment")
+	if condiment_visual.visible:
+		_failures.append("Empty OrderBowl must hide CondimentVisual")
+	bowl.receive_food_state(empty_state)
+	if bowl.add_condiment(&"garlic"):
+		_failures.append("OrderBowl must reject condiment while its FoodState is RAW")
+	original_food.add_heat(1.0)
+	if not bowl.can_add_condiment(&"garlic") or not bowl.add_condiment(&"garlic"):
+		_failures.append("OrderBowl must delegate valid condiment addition to FoodState")
+	if bowl.food_state != original_food or not original_food.has_condiment(&"garlic"):
+		_failures.append("OrderBowl condiment addition must preserve FoodState identity")
+	if not condiment_visual.visible:
+		_failures.append("OrderBowl must show CondimentVisual after any condiment is added")
+	if (
+		original_food.staple_id != &"wide_noodle"
+		or original_food.heat_progress != 1.0
+		or original_food.cooking_state != FoodState.CookingState.COOKED
+	):
+		_failures.append("OrderBowl condiment API must preserve staple and cooking data")
+	bowl.free()
 
 
 func _check_order_bowl_carry_integration() -> void:
@@ -834,6 +931,124 @@ func _check_staple_station_business_rules() -> void:
 		or valid_food.staple_id != &"instant_noodle"
 	):
 		_failures.append("Floor Drop must preserve staple Bowl business state")
+
+	test_world.free()
+
+
+func _check_condiment_station_business_rules() -> void:
+	var station_scene := load("res://scenes/condiment_station.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	var counter_scene := load("res://scenes/test_counter.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	if (
+		station_scene == null
+		or bowl_scene == null
+		or pot_scene == null
+		or carryable_scene == null
+		or counter_scene == null
+		or player_scene == null
+	):
+		return
+
+	var movement_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	if movement_scene != null:
+		var movement_test := movement_scene.instantiate()
+		var y_sort_world := movement_test.get_node("YSortWorld") as Node2D
+		var garlic_station := y_sort_world.get_node("GarlicStation") as CondimentStation
+		var cilantro_station := y_sort_world.get_node("CilantroStation") as CondimentStation
+		if garlic_station == null or garlic_station.condiment_id != &"garlic":
+			_failures.append("MovementTest GarlicStation must use stable garlic ID")
+		if cilantro_station == null or cilantro_station.condiment_id != &"cilantro":
+			_failures.append("MovementTest CilantroStation must use stable cilantro ID")
+		if (
+			garlic_station == null
+			or cilantro_station == null
+			or garlic_station.get_parent() != y_sort_world
+			or cilantro_station.get_parent() != y_sort_world
+			or garlic_station.z_index != 0
+			or cilantro_station.z_index != 0
+		):
+			_failures.append("Condiment stations must be direct YSortWorld children at z_index 0")
+		movement_test.free()
+
+	var test_world := Node2D.new()
+	get_root().add_child(test_world)
+	var station := station_scene.instantiate() as CondimentStation
+	station.condiment_id = &"garlic"
+	var empty_id_station := station_scene.instantiate() as CondimentStation
+	var bowl := bowl_scene.instantiate() as OrderBowl
+	bowl.bind_to_order(OrderData.new(&"station_condiment", &"wide_noodle"))
+	bowl.add_staple(&"wide_noodle")
+	bowl.food_state.add_heat(1.0)
+	var original_food := bowl.food_state
+	var pot := pot_scene.instantiate() as Pot
+	var generic_item := carryable_scene.instantiate() as Carryable
+	var counter := counter_scene.instantiate() as PlacementSurface
+	var empty_player := player_scene.instantiate()
+	var bowl_player := player_scene.instantiate()
+	var pot_player := player_scene.instantiate()
+	var generic_player := player_scene.instantiate()
+	var pickup_player := player_scene.instantiate()
+	bowl_player.name = "CondimentBowlPlayer"
+	pot_player.name = "CondimentPotPlayer"
+	generic_player.name = "CondimentGenericPlayer"
+	pickup_player.name = "CondimentPickupPlayer"
+	for node in [
+		station,
+		empty_id_station,
+		bowl,
+		pot,
+		generic_item,
+		counter,
+		empty_player,
+		bowl_player,
+		pot_player,
+		generic_player,
+		pickup_player,
+	]:
+		test_world.add_child(node)
+
+	var empty_carry := empty_player.get_node("PlayerCarry") as PlayerCarry
+	var bowl_carry := bowl_player.get_node("PlayerCarry") as PlayerCarry
+	var pot_carry := pot_player.get_node("PlayerCarry") as PlayerCarry
+	var generic_carry := generic_player.get_node("PlayerCarry") as PlayerCarry
+	var pickup_carry := pickup_player.get_node("PlayerCarry") as PlayerCarry
+	bowl_carry.pickup(bowl)
+	pot_carry.pickup(pot)
+	generic_carry.pickup(generic_item)
+	if station.can_interact(empty_carry) or station.interact(empty_carry):
+		_failures.append("CondimentStation must reject empty hands")
+	if station.can_interact(generic_carry) or station.interact(generic_carry):
+		_failures.append("CondimentStation must reject TestCarryable")
+	if station.can_interact(pot_carry) or station.interact(pot_carry):
+		_failures.append("CondimentStation must reject Pot")
+	if empty_id_station.can_interact(bowl_carry) or empty_id_station.interact(bowl_carry):
+		_failures.append("CondimentStation must reject an empty condiment ID")
+	if not station.can_interact(bowl_carry) or not station.interact(bowl_carry):
+		_failures.append("CondimentStation must add its condiment to a held cooked OrderBowl")
+	if bowl_carry.get_held_item() != bowl or bowl.food_state != original_food:
+		_failures.append("CondimentStation interaction must keep the same Bowl held and FoodState intact")
+	if original_food.condiment_ids.count(&"garlic") != 1:
+		_failures.append("CondimentStation must record garlic exactly once")
+	if station.can_interact(bowl_carry) or station.interact(bowl_carry):
+		_failures.append("CondimentStation must reject duplicate condiment interaction")
+
+	var original_condiments := original_food.condiment_ids.duplicate()
+	if not bowl_carry.place_on(counter):
+		_failures.append("Condiment Bowl must place on a generic Counter")
+	if not counter.interact(pickup_carry):
+		_failures.append("Condiment Bowl must be picked up from Counter")
+	if not pickup_carry.drop_to_world(Vector2(520.0, 240.0)):
+		_failures.append("Condiment Bowl must support Floor Drop")
+	if (
+		bowl.food_state != original_food
+		or original_food.condiment_ids != original_condiments
+		or original_food.staple_id != &"wide_noodle"
+		or original_food.cooking_state != FoodState.CookingState.COOKED
+	):
+		_failures.append("Counter, pickup, and drop must preserve condiment, staple, and cooking data")
 
 	test_world.free()
 

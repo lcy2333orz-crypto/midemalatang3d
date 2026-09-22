@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/test_carryable.tscn" id="2_carryable"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/staple_station.tscn" id="5_staple_station"]
 [ext_resource type="PackedScene" path="res://scenes/pot.tscn" id="6_pot"]
 [ext_resource type="PackedScene" path="res://scenes/stove_station.tscn" id="7_stove"]
+[ext_resource type="PackedScene" path="res://scenes/condiment_station.tscn" id="8_condiment"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1280, 32)
@@ -120,6 +121,16 @@ position = Vector2(400, 160)
 
 [node name="StoveA" parent="YSortWorld" instance=ExtResource("7_stove")]
 position = Vector2(260, -160)
+
+[node name="GarlicStation" parent="YSortWorld" instance=ExtResource("8_condiment")]
+modulate = Color(0.86, 0.86, 0.8, 1)
+position = Vector2(-180, -220)
+condiment_id = &"garlic"
+
+[node name="CilantroStation" parent="YSortWorld" instance=ExtResource("8_condiment")]
+modulate = Color(0.68, 0.84, 0.66, 1)
+position = Vector2(0, -220)
+condiment_id = &"cilantro"
 
 [node name="WideNoodleStation" parent="YSortWorld" instance=ExtResource("5_staple_station")]
 modulate = Color(0.78, 0.88, 1, 1)
