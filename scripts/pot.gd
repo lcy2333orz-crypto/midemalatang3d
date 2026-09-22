@@ -66,6 +66,34 @@ func receive_from_bowl(bowl: OrderBowl) -> bool:
 	return false
 
 
+func can_transfer_to_bowl(bowl: OrderBowl) -> bool:
+	return (
+		current_holder == null
+		and current_surface == null
+		and food_state != null
+		and not order_id.is_empty()
+		and food_state.order_id == order_id
+		and food_state.is_cooked_or_beyond()
+		and bowl != null
+		and not bowl.order_id.is_empty()
+		and bowl.food_state == null
+		and bowl.order_id == order_id
+	)
+
+
+func transfer_to_bowl(bowl: OrderBowl) -> bool:
+	var state := food_state
+	if not can_transfer_to_bowl(bowl):
+		return false
+	if not bowl.receive_food_state(state):
+		return false
+
+	food_state = null
+	order_id = &""
+	_refresh_visuals()
+	return true
+
+
 func can_interact(player_carry: PlayerCarry) -> bool:
 	if player_carry == null:
 		return false
@@ -75,14 +103,20 @@ func can_interact(player_carry: PlayerCarry) -> bool:
 	var held_item := player_carry.get_held_item()
 	if not held_item is OrderBowl:
 		return false
-	return can_receive_from_bowl(held_item as OrderBowl)
+	var held_bowl := held_item as OrderBowl
+	if held_bowl.food_state != null:
+		return can_receive_from_bowl(held_bowl)
+	return can_transfer_to_bowl(held_bowl)
 
 
 func interact(player_carry: PlayerCarry) -> bool:
 	if not can_interact(player_carry):
 		return false
 	if player_carry.has_item():
-		return receive_from_bowl(player_carry.get_held_item() as OrderBowl)
+		var held_bowl := player_carry.get_held_item() as OrderBowl
+		if held_bowl.food_state != null:
+			return receive_from_bowl(held_bowl)
+		return transfer_to_bowl(held_bowl)
 	return super.interact(player_carry)
 
 

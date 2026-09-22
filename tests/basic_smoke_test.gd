@@ -38,6 +38,13 @@ class RejectingReceivePot:
 		return false
 
 
+class RejectingFoodReceiveBowl:
+	extends OrderBowl
+
+	func receive_food_state(_state: FoodState) -> bool:
+		return false
+
+
 func _init() -> void:
 	call_deferred(&"_run")
 
@@ -61,6 +68,7 @@ func _run() -> void:
 	_check_order_bowl_carry_integration()
 	_check_staple_station_business_rules()
 	_check_pot_business_rules()
+	_check_pot_return_transfer_rules()
 	_check_pot_interaction_and_carry()
 	_check_stove_business_rules()
 	_check_localization()
@@ -873,12 +881,14 @@ func _check_pot_business_rules() -> void:
 		&"receive_food_state",
 		&"can_receive_from_bowl",
 		&"receive_from_bowl",
+		&"can_transfer_to_bowl",
+		&"transfer_to_bowl",
 		&"can_interact",
 		&"interact",
 	]:
 		if not pot.has_method(method_name):
 			_failures.append("Pot missing required method: %s" % method_name)
-	for forbidden_method in [&"take_food_state", &"pour_to_bowl", &"serve_to_bowl", &"transfer_to_bowl"]:
+	for forbidden_method in [&"take_food_state", &"pour_to_bowl", &"serve_to_bowl"]:
 		if pot.has_method(forbidden_method):
 			_failures.append("Pot must not expose reverse transfer method: %s" % forbidden_method)
 
@@ -1067,6 +1077,114 @@ func _check_pot_business_rules() -> void:
 		_failures.append("Failed Pot receipt must roll the exact FoodState back into its Bowl")
 	rollback_bowl.free()
 	rejecting_pot.free()
+
+
+func _check_pot_return_transfer_rules() -> void:
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	if pot_scene == null or bowl_scene == null or player_scene == null:
+		return
+
+	var heat_amounts := [0.0, 0.5, 1.0, 2.0, 3.0]
+	var expected_success := [false, false, true, true, true]
+	for index in heat_amounts.size():
+		var bowl := bowl_scene.instantiate() as OrderBowl
+		var pot := pot_scene.instantiate() as Pot
+		var order_id := StringName("return_state_%d" % index)
+		bowl.bind_to_order(OrderData.new(order_id, &"wide_noodle"))
+		bowl.add_staple(&"instant_noodle")
+		var original_food := bowl.food_state
+		pot.receive_from_bowl(bowl)
+		if heat_amounts[index] > 0.0:
+			original_food.add_heat(heat_amounts[index])
+		var original_heat := original_food.heat_progress
+		var original_cooking_state := original_food.cooking_state
+		var did_transfer := pot.transfer_to_bowl(bowl)
+		if did_transfer != expected_success[index]:
+			_failures.append("Pot to Bowl transfer must follow cooking state at index %d" % index)
+		if expected_success[index]:
+			if bowl.food_state != original_food or pot.food_state != null or not pot.order_id.is_empty():
+				_failures.append("Successful Pot return must move the same FoodState and unbind Pot")
+			if (
+				bowl.order_id != order_id
+				or original_food.heat_progress != original_heat
+				or original_food.cooking_state != original_cooking_state
+				or original_food.staple_id != &"instant_noodle"
+				or not original_food.base_food_present
+			):
+				_failures.append("Pot return must preserve Bowl order and all FoodState data")
+		else:
+			if pot.food_state != original_food or bowl.food_state != null or pot.order_id != order_id:
+				_failures.append("Rejected raw or cooking return must preserve both containers")
+		bowl.free()
+		pot.free()
+
+	var failure_source := bowl_scene.instantiate() as OrderBowl
+	var failure_pot := pot_scene.instantiate() as Pot
+	failure_source.bind_to_order(OrderData.new(&"return_failure", &"wide_noodle"))
+	var failure_food := failure_source.food_state
+	failure_pot.receive_from_bowl(failure_source)
+	failure_food.add_heat(1.0)
+	var wrong_order_bowl := bowl_scene.instantiate() as OrderBowl
+	wrong_order_bowl.bind_to_order(OrderData.new(&"different_return_order", &"wide_noodle"))
+	wrong_order_bowl.take_food_state()
+	if failure_pot.transfer_to_bowl(wrong_order_bowl):
+		_failures.append("Pot must reject a cooked return to a different order Bowl")
+	if failure_pot.food_state != failure_food or wrong_order_bowl.food_state != null:
+		_failures.append("Wrong-order return failure must preserve Pot and Bowl")
+	var occupied_bowl := bowl_scene.instantiate() as OrderBowl
+	occupied_bowl.bind_to_order(OrderData.new(&"return_failure", &"wide_noodle"))
+	var occupied_food := occupied_bowl.food_state
+	if failure_pot.transfer_to_bowl(occupied_bowl):
+		_failures.append("Pot must reject a non-empty matching Bowl")
+	if failure_pot.food_state != failure_food or occupied_bowl.food_state != occupied_food:
+		_failures.append("Non-empty Bowl return failure must preserve both FoodStates")
+	var rejecting_bowl := RejectingFoodReceiveBowl.new()
+	rejecting_bowl.order_id = &"return_failure"
+	if not failure_pot.can_transfer_to_bowl(rejecting_bowl):
+		_failures.append("Rejecting Bowl setup must pass Pot return precheck")
+	if failure_pot.transfer_to_bowl(rejecting_bowl):
+		_failures.append("Pot return must report Bowl receive failure")
+	if failure_pot.food_state != failure_food or rejecting_bowl.food_state != null:
+		_failures.append("Bowl receive failure must not clear Pot FoodState")
+	failure_source.free()
+	failure_pot.free()
+	wrong_order_bowl.free()
+	occupied_bowl.free()
+	rejecting_bowl.free()
+
+	var test_world := Node2D.new()
+	get_root().add_child(test_world)
+	var interaction_bowl := bowl_scene.instantiate() as OrderBowl
+	var interaction_pot := pot_scene.instantiate() as Pot
+	var interaction_player := player_scene.instantiate()
+	interaction_bowl.bind_to_order(OrderData.new(&"interaction_return", &"wide_noodle"))
+	interaction_bowl.add_staple(&"wide_noodle")
+	var interaction_food := interaction_bowl.food_state
+	interaction_pot.receive_from_bowl(interaction_bowl)
+	interaction_food.add_heat(1.0)
+	test_world.add_child(interaction_bowl)
+	test_world.add_child(interaction_pot)
+	test_world.add_child(interaction_player)
+	var interaction_carry := interaction_player.get_node("PlayerCarry") as PlayerCarry
+	interaction_carry.pickup(interaction_bowl)
+	if not interaction_pot.can_interact(interaction_carry) or not interaction_pot.interact(interaction_carry):
+		_failures.append("Ground Pot must return cooked food to held matching Empty Bowl")
+	if interaction_carry.get_held_item() != interaction_bowl or interaction_bowl.food_state != interaction_food:
+		_failures.append("Pot return interaction must keep the same Bowl held with the same FoodState")
+	if interaction_pot.current_holder != null or interaction_pot.food_state != null or not interaction_pot.order_id.is_empty():
+		_failures.append("Pot return interaction must not pick up Pot and must fully unbind it")
+
+	var reuse_bowl := bowl_scene.instantiate() as OrderBowl
+	reuse_bowl.bind_to_order(OrderData.new(&"reuse_order", &"instant_noodle"))
+	var reuse_food := reuse_bowl.food_state
+	test_world.add_child(reuse_bowl)
+	if not interaction_pot.receive_from_bowl(reuse_bowl):
+		_failures.append("Returned empty Pot must be reusable for another order")
+	if interaction_pot.order_id != &"reuse_order" or interaction_pot.food_state != reuse_food:
+		_failures.append("Reused Pot must bind to the next Bowl and preserve FoodState identity")
+	test_world.free()
 
 
 func _check_pot_interaction_and_carry() -> void:
