@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://scenes/test_carryable.tscn" id="2_carryable"]
@@ -8,6 +8,9 @@
 [ext_resource type="PackedScene" path="res://scenes/pot.tscn" id="6_pot"]
 [ext_resource type="PackedScene" path="res://scenes/stove_station.tscn" id="7_stove"]
 [ext_resource type="PackedScene" path="res://scenes/condiment_station.tscn" id="8_condiment"]
+[ext_resource type="PackedScene" path="res://scenes/raw_order_rack.tscn" id="9_rack"]
+[ext_resource type="PackedScene" path="res://scenes/pos_station.tscn" id="10_pos"]
+[ext_resource type="Script" path="res://scripts/order_registry.gd" id="11_registry"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_horizontal"]
 size = Vector2(1280, 32)
@@ -25,6 +28,11 @@ size = Vector2(100, 100)
 size = Vector2(100, 100)
 
 [node name="MovementTest" type="Node2D"]
+
+[node name="Systems" type="Node" parent="."]
+
+[node name="OrderRegistry" type="Node" parent="Systems"]
+script = ExtResource("11_registry")
 
 [node name="Ground" type="Polygon2D" parent="."]
 polygon = PackedVector2Array(-640, -360, 640, -360, 640, 360, -640, 360)
@@ -131,6 +139,14 @@ condiment_id = &"garlic"
 modulate = Color(0.68, 0.84, 0.66, 1)
 position = Vector2(0, -220)
 condiment_id = &"cilantro"
+
+[node name="RawOrderRack" parent="YSortWorld" instance=ExtResource("9_rack")]
+position = Vector2(440, 280)
+
+[node name="POSStation" parent="YSortWorld" instance=ExtResource("10_pos")]
+position = Vector2(-480, 140)
+order_registry_path = NodePath("../../Systems/OrderRegistry")
+raw_order_rack_path = NodePath("../RawOrderRack")
 
 [node name="WideNoodleStation" parent="YSortWorld" instance=ExtResource("5_staple_station")]
 modulate = Color(0.78, 0.88, 1, 1)

@@ -11,6 +11,8 @@ const SCENE_PATHS := [
 	"res://scenes/pot.tscn",
 	"res://scenes/stove_station.tscn",
 	"res://scenes/condiment_station.tscn",
+	"res://scenes/raw_order_rack.tscn",
+	"res://scenes/pos_station.tscn",
 ]
 const MOVEMENT_ACTIONS := [
 	&"gameplay_move_up",
@@ -63,6 +65,7 @@ func _run() -> void:
 	_check_carry_state_transitions()
 	_check_order_and_food_data()
 	_check_order_registry_rules()
+	_check_pos_and_raw_order_rack_rules()
 	_check_food_staple_rules()
 	_check_food_cooking_rules()
 	_check_food_condiment_rules()
@@ -166,6 +169,8 @@ func _check_world_draw_order_structure() -> void:
 		&"StoveA",
 		&"GarlicStation",
 		&"CilantroStation",
+		&"RawOrderRack",
+		&"POSStation",
 	]:
 		var world_object := y_sort_world.get_node(NodePath(node_name)) as CanvasItem
 		if world_object == null or world_object.get_parent() != y_sort_world:
@@ -375,6 +380,173 @@ func _check_order_registry_rules() -> void:
 		if not stored_value is OrderData or stored_value is Node:
 			_failures.append("OrderRegistry must store only logical OrderData values")
 	registry.free()
+
+
+func _check_pos_and_raw_order_rack_rules() -> void:
+	var rack_scene := load("res://scenes/raw_order_rack.tscn") as PackedScene
+	var movement_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	if (
+		rack_scene == null
+		or movement_scene == null
+		or player_scene == null
+		or carryable_scene == null
+		or pot_scene == null
+	):
+		return
+
+	var rack_world := Node2D.new()
+	get_root().add_child(rack_world)
+	var rack := rack_scene.instantiate() as RawOrderRack
+	var rack_player := player_scene.instantiate()
+	var held_player := player_scene.instantiate()
+	var held_item := carryable_scene.instantiate() as Carryable
+	held_player.name = "RackHeldPlayer"
+	held_item.name = "RackHeldItem"
+	rack_world.add_child(rack)
+	rack_world.add_child(rack_player)
+	rack_world.add_child(held_player)
+	rack_world.add_child(held_item)
+	if not rack.has_capacity() or rack.get_occupied_count() != 0:
+		_failures.append("RawOrderRack must begin with four available slots")
+	if rack.enqueue_order(null) != null or rack.enqueue_order(OrderData.new(&"", &"")) != null:
+		_failures.append("RawOrderRack must reject null and invalid orders")
+
+	var rack_registry := OrderRegistry.new()
+	var rack_bowls: Array[OrderBowl] = []
+	var food_instance_ids: Array[int] = []
+	for index in 5:
+		var request := OrderRequestData.new(StringName("rack_request_%d" % index), &"wide_noodle")
+		var order := rack_registry.accept_request(request)
+		if index < RawOrderRack.MAX_SLOTS:
+			var bowl := rack.enqueue_order(order)
+			if bowl == null:
+				_failures.append("RawOrderRack must enqueue each of its first four orders")
+				continue
+			rack_bowls.append(bowl)
+			if bowl.order_id != order.order_id or bowl.food_state == null:
+				_failures.append("Rack Bowl must bind to its OrderData with raw FoodState")
+			elif food_instance_ids.has(bowl.food_state.get_instance_id()):
+				_failures.append("Each Rack Bowl must own a distinct FoodState")
+			else:
+				food_instance_ids.append(bowl.food_state.get_instance_id())
+			if bowl.current_holder != null or bowl.current_surface != null or bowl.collision_layer != 0:
+				_failures.append("Rack Bowl must be unheld, unsurfaced, and interaction-disabled")
+		else:
+			if rack.enqueue_order(order) != null:
+				_failures.append("RawOrderRack must reject a fifth Bowl while full")
+	if rack.get_occupied_count() != RawOrderRack.MAX_SLOTS or rack.has_capacity():
+		_failures.append("Four enqueued Bowls must fill RawOrderRack")
+
+	var rack_carry := rack_player.get_node("PlayerCarry") as PlayerCarry
+	if not rack.can_interact(rack_carry) or not rack.interact(rack_carry):
+		_failures.append("Empty-handed Player must take Bowl from RawOrderRack")
+	elif rack_bowls.is_empty() or rack_carry.get_held_item() != rack_bowls[0]:
+		_failures.append("RawOrderRack must dispense the same Bowl from the lowest occupied slot")
+	if rack.get_occupied_count() != 3 or not rack.has_capacity():
+		_failures.append("Taking a Rack Bowl must restore one slot of capacity")
+	var held_carry := held_player.get_node("PlayerCarry") as PlayerCarry
+	held_carry.pickup(held_item)
+	if rack.can_interact(held_carry) or rack.interact(held_carry):
+		_failures.append("RawOrderRack must reject players holding any item")
+	rack_world.free()
+	rack_registry.free()
+
+	var movement_test := movement_scene.instantiate()
+	get_root().add_child(movement_test)
+	var registry := movement_test.get_node_or_null("Systems/OrderRegistry") as OrderRegistry
+	var movement_rack := movement_test.get_node_or_null("YSortWorld/RawOrderRack") as RawOrderRack
+	var pos := movement_test.get_node_or_null("YSortWorld/POSStation") as POSStation
+	if registry == null or movement_rack == null or pos == null:
+		_failures.append("MovementTest must wire OrderRegistry, RawOrderRack, and POSStation")
+		movement_test.free()
+		return
+	if pos.has_pending_request() or pos.can_accept_pending_request():
+		_failures.append("MovementTest POS must begin without pending request")
+
+	var y_sort_world := movement_test.get_node("YSortWorld") as Node2D
+	var player_carry := y_sort_world.get_node("Player/PlayerCarry") as PlayerCarry
+	var occupied_player := player_scene.instantiate()
+	occupied_player.name = "POSOccupiedPlayer"
+	var occupied_item := carryable_scene.instantiate() as Carryable
+	occupied_item.name = "POSOccupiedItem"
+	y_sort_world.add_child(occupied_player)
+	y_sort_world.add_child(occupied_item)
+	var occupied_carry := occupied_player.get_node("PlayerCarry") as PlayerCarry
+	occupied_carry.pickup(occupied_item)
+	if pos.can_interact(player_carry) or pos.interact(player_carry):
+		_failures.append("POS without pending request must not interact")
+	if pos.set_pending_request(null) or pos.set_pending_request(OrderRequestData.new(&"", &"wide_noodle")):
+		_failures.append("POS must reject null and invalid pending requests")
+
+	var first_request := OrderRequestData.new(&"pos_request_001", &"wide_noodle")
+	var blocked_replacement := OrderRequestData.new(&"pos_request_002", &"instant_noodle")
+	if not pos.set_pending_request(first_request):
+		_failures.append("POS must accept its first valid pending request")
+	if pos.set_pending_request(blocked_replacement) or pos.pending_request != first_request:
+		_failures.append("POS must not overwrite an existing pending request")
+	if pos.can_interact(occupied_carry) or pos.interact(occupied_carry):
+		_failures.append("POS must reject interaction while Player holds an item")
+	if not pos.can_interact(player_carry) or not pos.interact(player_carry):
+		_failures.append("Empty-handed Player must accept pending request when Rack has capacity")
+	var accepted_order := registry.get_order(&"order_0001")
+	if accepted_order == null or registry.get_active_order_count() != 1:
+		_failures.append("POS acceptance must register one active OrderData")
+	if pos.has_pending_request():
+		_failures.append("Successful POS acceptance must clear pending request")
+	if movement_rack.get_occupied_count() != 1:
+		_failures.append("Successful POS acceptance must enqueue one OrderBowl")
+	var produced_bowl := movement_rack.get_node("Slot0").get_child(0) as OrderBowl
+	if produced_bowl == null or accepted_order == null or produced_bowl.order_id != accepted_order.order_id:
+		_failures.append("POS-created Bowl must match accepted OrderData")
+	if not movement_rack.interact(player_carry) or player_carry.get_held_item() != produced_bowl:
+		_failures.append("Player must receive the same physical Bowl produced by POS")
+
+	if produced_bowl != null:
+		var kitchen_food := produced_bowl.food_state
+		var integration_pot := pot_scene.instantiate() as Pot
+		y_sort_world.add_child(integration_pot)
+		if not produced_bowl.add_staple(&"wide_noodle"):
+			_failures.append("POS Bowl must remain compatible with staple API")
+		elif not integration_pot.receive_from_bowl(produced_bowl):
+			_failures.append("POS Bowl must remain compatible with Bowl to Pot transfer")
+		else:
+			kitchen_food.add_heat(1.0)
+			if not integration_pot.transfer_to_bowl(produced_bowl):
+				_failures.append("POS Bowl must remain compatible with cooked Pot return")
+			elif not produced_bowl.add_condiment(&"garlic"):
+				_failures.append("POS Bowl must remain compatible with condiment API")
+
+	var duplicate_request := OrderRequestData.new(&"pos_request_001", &"instant_noodle")
+	if not pos.set_pending_request(duplicate_request):
+		_failures.append("POS may stage a valid request object before Registry duplicate check")
+	if pos.can_accept_pending_request() or pos.accept_pending_request() != null:
+		_failures.append("POS must not accept a request_id already consumed by Registry")
+	if pos.pending_request != duplicate_request:
+		_failures.append("Failed duplicate POS acceptance must preserve pending request")
+	pos.clear_pending_request()
+
+	for index in 4:
+		var fill_request := OrderRequestData.new(StringName("pos_fill_%d" % index), &"wide_noodle")
+		var fill_order := registry.accept_request(fill_request)
+		if movement_rack.enqueue_order(fill_order) == null:
+			_failures.append("POS Rack-full setup must fill all four slots")
+	var full_request := OrderRequestData.new(&"pos_waiting_for_capacity", &"wide_noodle")
+	var count_before_full_rejection := registry.get_active_order_count()
+	if not pos.set_pending_request(full_request):
+		_failures.append("POS must stage request while Rack is full")
+	if pos.can_accept_pending_request() or pos.accept_pending_request() != null:
+		_failures.append("POS must reject acceptance while RawOrderRack is full")
+	if (
+		pos.pending_request != full_request
+		or registry.get_active_order_count() != count_before_full_rejection
+		or registry.has_accepted_request(full_request.request_id)
+	):
+		_failures.append("Rack-full POS failure must preserve pending request and Registry")
+
+	movement_test.free()
 
 
 func _check_food_staple_rules() -> void:
