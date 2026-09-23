@@ -74,6 +74,16 @@ func drop_to_world(world_position: Vector2) -> bool:
 	return true
 
 
+func discard_held_item(expected_item: Carryable) -> bool:
+	_validate_held_item()
+	if expected_item == null or _held_item != expected_item:
+		return false
+
+	_held_item = null
+	expected_item.queue_free()
+	return true
+
+
 func _is_drop_position_legal(world_position: Vector2) -> bool:
 	if not _player.is_inside_tree():
 		return false

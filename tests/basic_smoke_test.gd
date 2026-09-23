@@ -13,6 +13,7 @@ const SCENE_PATHS := [
 	"res://scenes/condiment_station.tscn",
 	"res://scenes/raw_order_rack.tscn",
 	"res://scenes/pos_station.tscn",
+	"res://scenes/trash_station.tscn",
 ]
 const MOVEMENT_ACTIONS := [
 	&"gameplay_move_up",
@@ -63,9 +64,11 @@ func _run() -> void:
 	_check_input_actions()
 	_check_interaction_contracts()
 	_check_carry_state_transitions()
+	_check_player_discard_rules()
 	_check_order_and_food_data()
 	_check_order_registry_rules()
 	_check_pos_and_raw_order_rack_rules()
+	_check_trash_order_bowl_reissue_rules()
 	_check_food_staple_rules()
 	_check_food_cooking_rules()
 	_check_food_condiment_rules()
@@ -171,6 +174,7 @@ func _check_world_draw_order_structure() -> void:
 		&"CilantroStation",
 		&"RawOrderRack",
 		&"POSStation",
+		&"TrashStation",
 	]:
 		var world_object := y_sort_world.get_node(NodePath(node_name)) as CanvasItem
 		if world_object == null or world_object.get_parent() != y_sort_world:
@@ -289,6 +293,34 @@ func _check_carry_state_transitions() -> void:
 	if second_player_carry.get_held_item() != item_a or surface.occupied_item != null:
 		_failures.append("Take must transfer item A from the surface")
 
+	test_world.free()
+
+
+func _check_player_discard_rules() -> void:
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	if player_scene == null or carryable_scene == null:
+		return
+
+	var test_world := Node2D.new()
+	get_root().add_child(test_world)
+	var player := player_scene.instantiate()
+	var held_item := carryable_scene.instantiate() as Carryable
+	var wrong_item := carryable_scene.instantiate() as Carryable
+	wrong_item.name = "WrongDiscardItem"
+	test_world.add_child(player)
+	test_world.add_child(held_item)
+	test_world.add_child(wrong_item)
+	var player_carry := player.get_node("PlayerCarry") as PlayerCarry
+	player_carry.pickup(held_item)
+	if player_carry.discard_held_item(wrong_item):
+		_failures.append("PlayerCarry discard must reject a different item")
+	if player_carry.get_held_item() != held_item or held_item.is_queued_for_deletion():
+		_failures.append("Rejected discard must preserve the original held item")
+	if not player_carry.discard_held_item(held_item):
+		_failures.append("PlayerCarry discard must accept the exact held item")
+	if player_carry.has_item() or not held_item.is_queued_for_deletion():
+		_failures.append("Successful discard must empty PlayerCarry and queue the item for deletion")
 	test_world.free()
 
 
@@ -547,6 +579,198 @@ func _check_pos_and_raw_order_rack_rules() -> void:
 		_failures.append("Rack-full POS failure must preserve pending request and Registry")
 
 	movement_test.free()
+
+
+func _check_trash_order_bowl_reissue_rules() -> void:
+	var movement_scene := load("res://scenes/movement_test.tscn") as PackedScene
+	var player_scene := load("res://scenes/player.tscn") as PackedScene
+	var carryable_scene := load("res://scenes/test_carryable.tscn") as PackedScene
+	var pot_scene := load("res://scenes/pot.tscn") as PackedScene
+	var bowl_scene := load("res://scenes/order_bowl.tscn") as PackedScene
+	if (
+		movement_scene == null
+		or player_scene == null
+		or carryable_scene == null
+		or pot_scene == null
+		or bowl_scene == null
+	):
+		return
+
+	var restriction_world := movement_scene.instantiate()
+	get_root().add_child(restriction_world)
+	var restriction_registry := restriction_world.get_node("Systems/OrderRegistry") as OrderRegistry
+	var restriction_trash := restriction_world.get_node("YSortWorld/TrashStation") as TrashStation
+	var restriction_y_sort := restriction_world.get_node("YSortWorld") as Node2D
+	var empty_carry := restriction_y_sort.get_node("Player/PlayerCarry") as PlayerCarry
+	if restriction_trash.can_interact(empty_carry) or restriction_trash.interact(empty_carry):
+		_failures.append("TrashStation must reject empty hands")
+
+	var generic_player := player_scene.instantiate()
+	var generic_item := carryable_scene.instantiate() as Carryable
+	generic_player.name = "TrashGenericPlayer"
+	generic_item.name = "TrashGenericItem"
+	restriction_y_sort.add_child(generic_player)
+	restriction_y_sort.add_child(generic_item)
+	var generic_carry := generic_player.get_node("PlayerCarry") as PlayerCarry
+	generic_carry.pickup(generic_item)
+	if restriction_trash.can_interact(generic_carry) or restriction_trash.interact(generic_carry):
+		_failures.append("TrashStation must reject TestCarryable")
+	if generic_carry.get_held_item() != generic_item or generic_item.is_queued_for_deletion():
+		_failures.append("TrashStation rejection must preserve TestCarryable")
+
+	var pot_player := player_scene.instantiate()
+	var held_pot := pot_scene.instantiate() as Pot
+	pot_player.name = "TrashPotPlayer"
+	restriction_y_sort.add_child(pot_player)
+	restriction_y_sort.add_child(held_pot)
+	var pot_carry := pot_player.get_node("PlayerCarry") as PlayerCarry
+	pot_carry.pickup(held_pot)
+	if restriction_trash.can_interact(pot_carry) or restriction_trash.interact(pot_carry):
+		_failures.append("TrashStation must reject Pot")
+	if pot_carry.get_held_item() != held_pot or held_pot.is_queued_for_deletion():
+		_failures.append("TrashStation must never destroy Pot")
+
+	var unbound_player := player_scene.instantiate()
+	var unbound_bowl := bowl_scene.instantiate() as OrderBowl
+	unbound_player.name = "TrashUnboundBowlPlayer"
+	restriction_y_sort.add_child(unbound_player)
+	restriction_y_sort.add_child(unbound_bowl)
+	var unbound_carry := unbound_player.get_node("PlayerCarry") as PlayerCarry
+	unbound_carry.pickup(unbound_bowl)
+	if restriction_trash.can_interact(unbound_carry) or restriction_trash.interact(unbound_carry):
+		_failures.append("TrashStation must reject unbound OrderBowl")
+
+	var empty_order := restriction_registry.accept_request(
+		OrderRequestData.new(&"trash_empty_bowl_request", &"wide_noodle")
+	)
+	var empty_bowl_player := player_scene.instantiate()
+	var empty_bowl := bowl_scene.instantiate() as OrderBowl
+	empty_bowl_player.name = "TrashEmptyBowlPlayer"
+	empty_bowl.bind_to_order(empty_order)
+	empty_bowl.take_food_state()
+	restriction_y_sort.add_child(empty_bowl_player)
+	restriction_y_sort.add_child(empty_bowl)
+	var empty_bowl_carry := empty_bowl_player.get_node("PlayerCarry") as PlayerCarry
+	empty_bowl_carry.pickup(empty_bowl)
+	if restriction_trash.can_interact(empty_bowl_carry) or restriction_trash.interact(empty_bowl_carry):
+		_failures.append("TrashStation must reject Empty bound OrderBowl")
+	if empty_bowl_carry.get_held_item() != empty_bowl or empty_bowl.is_queued_for_deletion():
+		_failures.append("Empty Bowl rejection must preserve the physical Bowl")
+
+	var ghost_player := player_scene.instantiate()
+	var ghost_bowl := bowl_scene.instantiate() as OrderBowl
+	ghost_player.name = "TrashGhostBowlPlayer"
+	ghost_bowl.bind_to_order(OrderData.new(&"ghost_order", &"wide_noodle"))
+	restriction_y_sort.add_child(ghost_player)
+	restriction_y_sort.add_child(ghost_bowl)
+	var ghost_carry := ghost_player.get_node("PlayerCarry") as PlayerCarry
+	ghost_carry.pickup(ghost_bowl)
+	if restriction_trash.can_interact(ghost_carry) or restriction_trash.interact(ghost_carry):
+		_failures.append("TrashStation must reject Bowl whose order is absent from Registry")
+	if ghost_carry.get_held_item() != ghost_bowl or ghost_bowl.is_queued_for_deletion():
+		_failures.append("Ghost-order rejection must preserve held Bowl")
+	restriction_world.free()
+
+	var full_world := movement_scene.instantiate()
+	get_root().add_child(full_world)
+	var full_registry := full_world.get_node("Systems/OrderRegistry") as OrderRegistry
+	var full_rack := full_world.get_node("YSortWorld/RawOrderRack") as RawOrderRack
+	var full_trash := full_world.get_node("YSortWorld/TrashStation") as TrashStation
+	var full_y_sort := full_world.get_node("YSortWorld") as Node2D
+	for index in RawOrderRack.MAX_SLOTS:
+		var fill_order := full_registry.accept_request(
+			OrderRequestData.new(StringName("trash_full_%d" % index), &"wide_noodle")
+		)
+		full_rack.enqueue_order(fill_order)
+	var held_order := full_registry.accept_request(
+		OrderRequestData.new(&"trash_full_held", &"wide_noodle")
+	)
+	var full_player := full_y_sort.get_node("Player")
+	var full_carry := full_player.get_node("PlayerCarry") as PlayerCarry
+	var full_held_bowl := bowl_scene.instantiate() as OrderBowl
+	full_held_bowl.bind_to_order(held_order)
+	full_y_sort.add_child(full_held_bowl)
+	full_carry.pickup(full_held_bowl)
+	var full_registry_count := full_registry.get_active_order_count()
+	if full_trash.can_interact(full_carry) or full_trash.interact(full_carry):
+		_failures.append("TrashStation must reject Bowl while RawOrderRack is full")
+	if (
+		full_carry.get_held_item() != full_held_bowl
+		or full_held_bowl.is_queued_for_deletion()
+		or full_rack.get_occupied_count() != RawOrderRack.MAX_SLOTS
+		or full_registry.get_active_order_count() != full_registry_count
+	):
+		_failures.append("Rack-full Trash rejection must preserve Bowl, Rack, and Registry")
+	full_world.free()
+
+	var reissue_world := movement_scene.instantiate()
+	get_root().add_child(reissue_world)
+	var registry := reissue_world.get_node("Systems/OrderRegistry") as OrderRegistry
+	var rack := reissue_world.get_node("YSortWorld/RawOrderRack") as RawOrderRack
+	var trash := reissue_world.get_node("YSortWorld/TrashStation") as TrashStation
+	var staple_station := reissue_world.get_node("YSortWorld/WideNoodleStation") as StapleStation
+	var player_carry := reissue_world.get_node("YSortWorld/Player/PlayerCarry") as PlayerCarry
+	var scenarios := [&"raw", &"wrong_staple", &"burnt", &"condiments"]
+	for index in scenarios.size():
+		var request_id := StringName("trash_reissue_%s" % scenarios[index])
+		var request := OrderRequestData.new(request_id, &"wide_noodle")
+		var order := registry.accept_request(request)
+		var original_bowl := rack.enqueue_order(order)
+		if original_bowl == null or not rack.interact(player_carry):
+			_failures.append("Trash reissue setup must provide held OrderBowl")
+			continue
+		var original_food := original_bowl.food_state
+		match scenarios[index]:
+			&"wrong_staple":
+				original_bowl.add_staple(&"instant_noodle")
+			&"burnt":
+				original_food.add_heat(3.0)
+			&"condiments":
+				original_food.add_heat(1.0)
+				original_bowl.add_condiment(&"garlic")
+				original_bowl.add_condiment(&"cilantro")
+		var active_count_before := registry.get_active_order_count()
+		var source_request_id := order.source_request_id
+		var required_staple_id := order.required_staple_id
+		if not trash.can_interact(player_carry) or not trash.interact(player_carry):
+			_failures.append("TrashStation must trash and reissue valid %s Bowl" % scenarios[index])
+			continue
+		if player_carry.has_item() or not original_bowl.is_queued_for_deletion():
+			_failures.append("Successful Trash must empty PlayerCarry and destroy original Bowl")
+		if (
+			registry.get_order(order.order_id) != order
+			or registry.get_active_order_count() != active_count_before
+			or order.source_request_id != source_request_id
+			or order.required_staple_id != required_staple_id
+		):
+			_failures.append("Trash must preserve logical OrderData identity and fields")
+		if rack.get_occupied_count() != 1:
+			_failures.append("Trash must enqueue exactly one replacement Bowl")
+			continue
+		var replacement := rack.get_node("Slot0").get_child(0) as OrderBowl
+		if replacement == null or replacement == original_bowl or replacement.order_id != order.order_id:
+			_failures.append("Trash replacement must be a new Bowl for the same order")
+			continue
+		var replacement_food := replacement.food_state
+		if replacement_food == null or replacement_food == original_food:
+			_failures.append("Trash replacement must own a new FoodState instance")
+		elif (
+			not replacement_food.base_food_present
+			or not replacement_food.staple_id.is_empty()
+			or replacement_food.heat_progress != 0.0
+			or replacement_food.cooking_state != FoodState.CookingState.RAW
+			or not replacement_food.condiment_ids.is_empty()
+		):
+			_failures.append("Trash replacement FoodState must reset to raw defaults")
+		if not rack.interact(player_carry) or player_carry.get_held_item() != replacement:
+			_failures.append("Replacement Bowl must remain retrievable from RawOrderRack")
+		elif index == 0:
+			if not staple_station.can_interact(player_carry) or not staple_station.interact(player_carry):
+				_failures.append("Replacement Bowl must remain compatible with StapleStation")
+		if player_carry.get_held_item() == replacement:
+			player_carry.discard_held_item(replacement)
+
+	reissue_world.free()
 
 
 func _check_food_staple_rules() -> void:
