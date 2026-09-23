@@ -62,6 +62,7 @@ func _run() -> void:
 	_check_interaction_contracts()
 	_check_carry_state_transitions()
 	_check_order_and_food_data()
+	_check_order_registry_rules()
 	_check_food_staple_rules()
 	_check_food_cooking_rules()
 	_check_food_condiment_rules()
@@ -317,6 +318,63 @@ func _check_order_and_food_data() -> void:
 	var invalid_food := FoodState.new(&"", false, &"")
 	if invalid_food.is_valid():
 		_failures.append("FoodState with an empty order_id must be invalid")
+
+
+func _check_order_registry_rules() -> void:
+	var valid_request := OrderRequestData.new(&"request_001", &"wide_noodle")
+	var no_staple_request := OrderRequestData.new(&"request_no_staple", &"")
+	var invalid_request := OrderRequestData.new(&"", &"wide_noodle")
+	if not valid_request.is_valid():
+		_failures.append("OrderRequestData with request_id must be valid")
+	if not no_staple_request.is_valid():
+		_failures.append("OrderRequestData may be valid without required staple")
+	if invalid_request.is_valid():
+		_failures.append("OrderRequestData with empty request_id must be invalid")
+	var request_value: Variant = valid_request
+	if request_value is Node:
+		_failures.append("OrderRequestData must not be a Node")
+
+	var registry := OrderRegistry.new()
+	if not registry is Node:
+		_failures.append("OrderRegistry must be a Node")
+	if registry.get_active_order_count() != 0:
+		_failures.append("OrderRegistry must begin empty")
+	if registry.can_accept_request(null) or registry.accept_request(null) != null:
+		_failures.append("OrderRegistry must reject null request")
+	if registry.can_accept_request(invalid_request) or registry.accept_request(invalid_request) != null:
+		_failures.append("OrderRegistry must reject invalid request")
+	if registry.get_active_order_count() != 0:
+		_failures.append("Rejected requests must not change active order count")
+
+	var first_order := registry.accept_request(valid_request)
+	if first_order == null or first_order.order_id != &"order_0001":
+		_failures.append("First accepted request must create order_0001")
+	elif (
+		first_order.source_request_id != &"request_001"
+		or first_order.required_staple_id != &"wide_noodle"
+	):
+		_failures.append("Accepted OrderData must preserve request source and staple")
+	if not registry.has_order(&"order_0001") or registry.get_order(&"order_0001") != first_order:
+		_failures.append("OrderRegistry lookup must return the same OrderData instance")
+	if not registry.has_accepted_request(&"request_001"):
+		_failures.append("OrderRegistry must record accepted request_id")
+
+	var duplicate_request := OrderRequestData.new(&"request_001", &"instant_noodle")
+	if registry.can_accept_request(duplicate_request) or registry.accept_request(duplicate_request) != null:
+		_failures.append("OrderRegistry must reject duplicate request_id across instances")
+	var second_order := registry.accept_request(no_staple_request)
+	if second_order == null or second_order.order_id != &"order_0002":
+		_failures.append("Rejected requests must not consume order numbers")
+	elif second_order.required_staple_id != &"" or second_order.source_request_id != &"request_no_staple":
+		_failures.append("OrderRegistry must preserve an accepted empty staple requirement")
+	if registry.get_active_order_count() != 2:
+		_failures.append("OrderRegistry active count must include both accepted orders")
+
+	var stored_orders: Dictionary = registry.get("_orders_by_id")
+	for stored_value: Variant in stored_orders.values():
+		if not stored_value is OrderData or stored_value is Node:
+			_failures.append("OrderRegistry must store only logical OrderData values")
+	registry.free()
 
 
 func _check_food_staple_rules() -> void:
